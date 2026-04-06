@@ -29,8 +29,17 @@ flutter run
 
 ```text
 baseer/
-|- lib/                  # Main Dart application code
-|  \- main.dart          # App entry point
+|- lib/
+|  |- main.dart                              # Entry point
+|  |- app/
+|  |  \- baseer_app.dart                     # Root app widget
+|  \- features/
+|     \- camera/
+|        |- application/
+|        |  \- camera_initializer.dart       # Camera setup logic
+|        \- presentation/
+|           \- pages/
+|              \- camera_launcher_page.dart  # Launch-time camera screen
 |- test/                 # Unit and widget tests
 |- android/              # Android-specific project files
 |- ios/                  # iOS-specific project files
