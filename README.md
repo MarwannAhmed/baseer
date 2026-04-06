@@ -1,17 +1,94 @@
-# baseer
+# Baseer
 
-A new Flutter project.
+Baseer is an assistant application built to support visually impaired users.
+
+The goal is to provide practical, accessible assistance through a simple and reliable mobile experience.
+
+## Tech Stack
+
+- Flutter (cross-platform app framework)
+- Dart
 
 ## Getting Started
 
-This project is a starting point for a Flutter application.
+### Prerequisites
 
-A few resources to get you started if this is your first Flutter project:
+- Flutter SDK installed (recommended: 3.41.6, stable)
+- Dart SDK 3.11.4 (included with Flutter 3.41.6)
+- A configured device or emulator
+- Android Studio, VS Code, or another Flutter-compatible IDE
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+### Run Locally
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+```bash
+flutter pub get
+flutter run
+```
+
+## Project Structure
+
+```text
+baseer/
+|- lib/                  # Main Dart application code
+|  \- main.dart          # App entry point
+|- test/                 # Unit and widget tests
+|- android/              # Android-specific project files
+|- ios/                  # iOS-specific project files
+|- web/                  # Web-specific project files
+|- windows/              # Windows desktop files
+|- linux/                # Linux desktop files
+|- macos/                # macOS desktop files
+|- pubspec.yaml          # Dependencies and project metadata
+\- README.md             # Project documentation
+```
+
+## Git Workflow
+
+### Branch Naming
+
+Use this format:
+
+```text
+<type>/<short-description>
+```
+
+Examples:
+
+- `feature/voice-guidance-foundation`
+- `fix/navigation-state-bug`
+- `docs/update-readme-structure`
+- `chore/setup-ci`
+
+Recommended branch types:
+
+- `feature` - new functionality
+- `fix` - bug fixes
+- `docs` - documentation only
+- `refactor` - code cleanup without behavior changes
+- `test` - test-related work
+- `chore` - tooling, config, or maintenance tasks
+
+### Commit Message Format
+
+Follow a Conventional Commits style:
+
+```text
+<type>(optional-scope): <short summary>
+```
+
+Examples:
+
+- `feat(auth): add basic login screen layout`
+- `fix(camera): handle permission denial gracefully`
+- `docs(readme): add branch and commit conventions`
+- `chore(deps): upgrade flutter packages`
+
+Recommended commit types:
+
+- `feat` - introduces a new feature
+- `fix` - fixes a bug
+- `docs` - documentation changes
+- `refactor` - code restructuring with no behavior change
+- `test` - adds or updates tests
+- `chore` - maintenance and tooling
+
