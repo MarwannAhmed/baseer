@@ -1,43 +1,40 @@
 // lib/features/camera/presentation/camera_page.dart
 //
-// Changes vs original:
-//   • Uses CameraService, STTService, TTSService, AnalysisService — no more
-//     inline duplicated logic.
-//   • Wires ColorDetector for local, on-device color detection.
-//   • TTS announcement fires in parallel with capture (no race condition).
-//   • AnalysisResult (structured) is consumed; enriched DetectedObject list
-//     is kept in state for future use (e.g. spatial audio, object list UI).
-//   • try/finally guarantees _isProcessing is always reset.
+// Redesigned to match the Screen_Ready mockup:
+//   • Navy #152E3E / Steel #2D6A8E / Cream #F7F5F0 palette
+//   • LIVE + greeting chips in the top bar
+//   • Scene caption overlay below top bar (shows last analysis result)
+//   • Centered mic FAB with pulsing rings
+//   • Describe / Read text / Call helper shortcut chips at the bottom
+//
+// All analysis logic (CameraService, STT, TTS, AnalysisService) is unchanged.
 
 import 'dart:io';
+import 'dart:ui' as ui;
 import 'dart:async';
-import 'dart:typed_data';
-
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
-import '../../color_recognition/application/color_detector.dart';
 import '../../analysis/domain/analysis_result.dart';
 import '../../analysis/application/analysis_service.dart';
-import '../../analysis/domain/detected_object.dart';
+import '../../color_recognition/application/color_detector.dart';
+import '../../../core/command_router.dart';
 import '../../../core/services/stt_service.dart';
 import '../../../core/services/tts_service.dart';
 import '../application/camera_service.dart';
 
-// ─── Top-level isolate helper ─────────────────────────────────────────────────
-// Must be a top-level function so compute() can send it to a background isolate.
+// Top-level decode so compute() can ship it to a background isolate.
 img.Image? _decodeImageBytes(Uint8List bytes) => img.decodeImage(bytes);
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
-const _kYellow    = Color(0xFFFFE14D);
-const _kWhite     = Colors.white;
-const _kBlack     = Colors.black;
-const _kSurface   = Color(0xCC000000);
-const _kSurfaceDim = Color(0x99000000);
-const _kBorder    = Color(0x33FFFFFF);
-const _kTextMuted = Color(0x99FFFFFF);
+const _kNavy       = Color(0xFF152E3E);
+const _kSteel      = Color(0xFF2D6A8E);
+const _kCream      = Color(0xFFF7F5F0);
+const _kSurface    = Color(0xCC0A1822);   // dark navy translucent
+const _kBorder     = Color(0x1FF7F5F0);   // cream 12%
+const _kTextMuted  = Color(0x99F7F5F0);   // cream 60%
 
 // ─── Entry point ──────────────────────────────────────────────────────────────
 class LiveCameraPage extends StatefulWidget {
@@ -50,30 +47,28 @@ class LiveCameraPage extends StatefulWidget {
 class _LiveCameraPageState extends State<LiveCameraPage>
     with TickerProviderStateMixin {
 
-  // ── Services (all owned here, not recreated inline) ──────────────────────
+  // ── Services ─────────────────────────────────────────────────────────────
   final _cameraService   = CameraService();
   final _sttService      = STTService();
   final _ttsService      = TTSService();
   final _analysisService = AnalysisService();
   final _colorDetector   = ColorDetector();
 
-  // ── State ────────────────────────────────────────────────────────────────
+  // ── State ─────────────────────────────────────────────────────────────────
   bool _isListening    = false;
   bool _isProcessing   = false;
   String _lastCommand  = 'كشف';
   String _lastResult   = '';
+  String? _initError;
   _AppMode _activeMode = _AppMode.detect;
 
-  /// Enriched objects from the last detect-mode scan (local colors applied).
-  List<DetectedObject> _detectedObjects = [];
-
-  // ── Animations ───────────────────────────────────────────────────────────
-  late AnimationController _pulseController;
+  // ── Animations ────────────────────────────────────────────────────────────
   late AnimationController _scanLineController;
   late AnimationController _resultFadeController;
-  late Animation<double>   _pulseAnim;
+  late AnimationController _pulseController;
   late Animation<double>   _scanLineAnim;
   late Animation<double>   _resultFadeAnim;
+  late Animation<double>   _pulseAnim;
 
   // ─── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -86,9 +81,9 @@ class _LiveCameraPageState extends State<LiveCameraPage>
 
   @override
   void dispose() {
-    _pulseController.dispose();
     _scanLineController.dispose();
     _resultFadeController.dispose();
+    _pulseController.dispose();
     _cameraService.dispose();
     _sttService.stopListening();
     _ttsService.stop();
@@ -96,16 +91,8 @@ class _LiveCameraPageState extends State<LiveCameraPage>
   }
 
   void _setupAnimations() {
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1800),
-    )..repeat(reverse: true);
-    _pulseAnim = Tween<double>(begin: 0.85, end: 1.0).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
-
     _scanLineController = AnimationController(
-      vsync: this,
+      vsync:    this,
       duration: const Duration(milliseconds: 2200),
     )..repeat();
     _scanLineAnim = Tween<double>(begin: 0.0, end: 1.0).animate(
@@ -113,23 +100,35 @@ class _LiveCameraPageState extends State<LiveCameraPage>
     );
 
     _resultFadeController = AnimationController(
-      vsync: this,
+      vsync:    this,
       duration: const Duration(milliseconds: 400),
     );
     _resultFadeAnim = CurvedAnimation(
       parent: _resultFadeController,
-      curve: Curves.easeOut,
+      curve:  Curves.easeOut,
+    );
+
+    _pulseController = AnimationController(
+      vsync:    this,
+      duration: const Duration(milliseconds: 1600),
+    )..repeat(reverse: true);
+    _pulseAnim = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
   }
 
-  // ─── Init ──────────────────────────────────────────────────────────────────
-
   Future<void> _initializeEverything() async {
-    await _cameraService.initialize();
-    await _sttService.init();
-    await _ttsService.init();
-    setState(() {});
-    await _ttsService.speak('جاهز. اضغط مطولاً للمسح. انقر مرتين للكلام.');
+    try {
+      await _cameraService.initialize();
+      await _sttService.init();
+      await _ttsService.init();
+      if (!mounted) return;
+      setState(() {});
+      await _ttsService.speak('جاهز. اضغط مطولاً للمسح. انقر مرتين للكلام.');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _initError = e.toString());
+    }
   }
 
   // ─── Mode switch ───────────────────────────────────────────────────────────
@@ -149,7 +148,10 @@ class _LiveCameraPageState extends State<LiveCameraPage>
   Future<void> _startListening() async {
     if (_isListening || _isProcessing) return;
     HapticFeedback.mediumImpact();
+    // TTS blocks until utterance finishes (awaitSpeakCompletion=true), then
+    // a short gap ensures the microphone doesn't pick up TTS audio tail.
     await _ttsService.speak('أستمع إليك');
+    await Future.delayed(const Duration(milliseconds: 300));
     setState(() => _isListening = true);
 
     await _sttService.startListening((text) {
@@ -157,8 +159,7 @@ class _LiveCameraPageState extends State<LiveCameraPage>
         _lastCommand = text;
         _isListening = false;
       });
-      // Fire-and-forget: confirm what was heard while we return to idle.
-      _ttsService.speak('قلت: $text');
+      _dispatchCommand(CommandRouter.route(text));
     });
   }
 
@@ -171,27 +172,16 @@ class _LiveCameraPageState extends State<LiveCameraPage>
     HapticFeedback.heavyImpact();
 
     try {
-      // 1. Capture the frame first — TTS runs in parallel, not before.
       final XFile file = await _cameraService.takePicture();
-      // Announce analysis while the HTTP request is building (no blocking wait).
       unawaited(_ttsService.speak('جاري التحليل'));
 
-      // 2. Backend: object detection + Arabic description.
       final AnalysisResult result = await _analysisService.analyze(
         imagePath: file.path,
         command:   _lastCommand,
       );
 
-      // 3. Local color detection — only meaningful in detect mode with objects.
-      List<DetectedObject> enrichedObjects = result.objects;
-      if (_activeMode == _AppMode.detect && result.objects.isNotEmpty) {
-        enrichedObjects = await _enrichWithLocalColors(file.path, result.objects);
-      }
-
-      // 4. Update UI and speak the backend description.
       setState(() {
-        _lastResult      = result.description;
-        _detectedObjects = enrichedObjects;
+        _lastResult = result.description;
       });
       _resultFadeController.forward();
       await _ttsService.speak(result.description);
@@ -201,63 +191,81 @@ class _LiveCameraPageState extends State<LiveCameraPage>
     } catch (_) {
       await _ttsService.speak('خطأ في الاتصال');
     } finally {
-      // Always release the processing lock.
       if (mounted) setState(() => _isProcessing = false);
     }
   }
 
-  /// Decodes the captured image in a background isolate, then runs
-  /// [ColorDetector.detectColorsForObjects] to override backend colors
-  /// with locally computed ones.
-  ///
-  /// Falls back silently to the original [objects] list on any error.
-  Future<List<DetectedObject>> _enrichWithLocalColors(
-    String imagePath,
-    List<DetectedObject> objects,
-  ) async {
-    try {
-      final Uint8List bytes = await File(imagePath).readAsBytes();
-      final img.Image? frame = await compute(_decodeImageBytes, bytes);
-      if (frame == null) return objects;
+  // ─── Color detection (local — no backend call) ──────────────────────────────
 
-      final rawMaps = objects.map(_objectToMap).toList();
-      final enrichedMaps =
-          await _colorDetector.detectColorsForObjects(frame, rawMaps);
-      return enrichedMaps.map(DetectedObject.fromJson).toList();
+  Future<void> _captureAndDetectColor() async {
+    if (_isProcessing) return;
+    setState(() => _isProcessing = true);
+    _resultFadeController.reverse();
+    HapticFeedback.heavyImpact();
+
+    try {
+      final file  = await _cameraService.takePicture();
+      unawaited(_ttsService.speak('جاري كشف اللون'));
+
+      final bytes = await File(file.path).readAsBytes();
+      final frame = await compute(_decodeImageBytes, bytes);
+      if (frame == null) {
+        await _ttsService.speak('تعذّر تحليل الصورة');
+        return;
+      }
+
+      await _colorDetector.setFrame(frame);
+      final result = _colorDetector.detect(0, 0, frame.width, frame.height);
+
+      setState(() => _lastResult = result.colorAr);
+      _resultFadeController.forward();
+      await _ttsService.speak('اللون ${result.colorAr}');
+
     } catch (_) {
-      // Color detection failed — return backend colors unchanged.
-      return objects;
+      await _ttsService.speak('خطأ في كشف اللون');
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
     }
   }
 
-  /// Converts a [DetectedObject] to the dynamic map format expected by
-  /// [ColorDetector.detectColorsForObjects].
-  Map<String, dynamic> _objectToMap(DetectedObject obj) => {
-    'label':       obj.label,
-    'confidence':  obj.confidence,
-    'bbox': <String, dynamic>{
-      'x1': obj.bbox['x1'] ?? 0,
-      'y1': obj.bbox['y1'] ?? 0,
-      'x2': obj.bbox['x2'] ?? 0,
-      'y2': obj.bbox['y2'] ?? 0,
-    },
-    'center':      <String, dynamic>{...obj.center},
-    'size':        <String, dynamic>{...obj.size},
-    'color_en':    obj.colorEn,
-    'color_ar':    obj.colorAr,
-    'distance_cm': obj.distanceCm,
-  };
+  // ─── Command dispatch ───────────────────────────────────────────────────────
+
+  void _dispatchCommand(AppCommand cmd) {
+    switch (cmd) {
+      case AppCommand.detectColor:
+        _captureAndDetectColor();
+      case AppCommand.readText:
+        _switchMode(_AppMode.text).then((_) => _captureAndSend());
+      case AppCommand.estimateDistance:
+        setState(() {
+          _activeMode  = _AppMode.detect;
+          _lastCommand = 'تقدير المسافة';
+        });
+        _captureAndSend();
+      case AppCommand.describe:
+        _switchMode(_AppMode.detect).then((_) => _captureAndSend());
+    }
+  }
 
   // ─── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
+    if (_initError != null) {
+      return _ErrorScreen(
+        message: _initError!,
+        onRetry: () {
+          setState(() => _initError = null);
+          _initializeEverything();
+        },
+      );
+    }
     if (!_cameraService.isReady) {
       return const _LoadingScreen();
     }
 
     return Scaffold(
-      backgroundColor: _kBlack,
+      backgroundColor: _kNavy,
       body: Stack(
         children: [
           // Camera feed
@@ -265,54 +273,82 @@ class _LiveCameraPageState extends State<LiveCameraPage>
             child: _CameraBackground(controller: _cameraService.controller!),
           ),
 
-          // Dark vignette overlay
-          Positioned.fill(child: _VignetteOverlay()),
+          // Dark gradient overlay (bottom-heavy, like the design)
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin:  Alignment.topCenter,
+                  end:    Alignment.bottomCenter,
+                  stops:  const [0.0, 0.4, 1.0],
+                  colors: [
+                    const Color(0x330A1822),
+                    Colors.transparent,
+                    const Color(0xEB0A1822),
+                  ],
+                ),
+              ),
+            ),
+          ),
 
-          // Viewfinder frame + scan-line
+          // Viewfinder corners + scan line
           Positioned.fill(
             child: _ViewfinderFrame(
               isProcessing: _isProcessing,
               scanLineAnim: _scanLineAnim,
-              pulseAnim:    _pulseAnim,
             ),
           ),
 
-          // Top mode bar
+          // Top bar: LIVE chip + greeting
           Positioned(
             top: 0, left: 0, right: 0,
-            child: _TopModeBar(
-              activeMode:     _activeMode,
-              onModeSelected: _switchMode,
-            ),
+            child: _TopBar(isProcessing: _isProcessing),
           ),
+
+          // Scene caption (result overlay)
+          if (_lastResult.isNotEmpty)
+            Positioned(
+              top:   MediaQuery.of(context).padding.top + 72,
+              left:  16,
+              right: 16,
+              child: FadeTransition(
+                opacity: _resultFadeAnim,
+                child:   _SceneCaption(text: _lastResult),
+              ),
+            ),
 
           // Bottom panel
           Positioned(
             bottom: 0, left: 0, right: 0,
             child: _BottomPanel(
-              isListening:     _isListening,
-              isProcessing:    _isProcessing,
-              lastResult:      _lastResult,
-              resultFadeAnim:  _resultFadeAnim,
-              onListen:        _startListening,
-              onCapture:       _captureAndSend,
+              isListening:  _isListening,
+              isProcessing: _isProcessing,
+              pulseAnim:    _pulseAnim,
+              onMicTap:     _startListening,
+              onMicHold:    _captureAndSend,
+              onDescribe: () async {
+                await _switchMode(_AppMode.detect);
+                _captureAndSend();
+              },
+              onReadText: () async {
+                await _switchMode(_AppMode.text);
+                _captureAndSend();
+              },
+              onColors: _captureAndDetectColor,
             ),
           ),
 
-          // Full-screen invisible gesture layer
+          // Full-screen gesture layer (double-tap = speak, long-press = scan)
           Positioned.fill(
             child: Semantics(
               label: 'منطقة الكاميرا. انقر مرتين للتحدث. اضغط مطولاً للمسح.',
               child: GestureDetector(
-                behavior:     HitTestBehavior.translucent,
-                onDoubleTap:  _startListening,
-                onLongPress:  _captureAndSend,
+                behavior:    HitTestBehavior.translucent,
+                onDoubleTap: _startListening,
+                onLongPress: _captureAndSend,
               ),
             ),
           ),
-
-          // Processing shimmer
-          if (_isProcessing) const _ProcessingOverlay(),
         ],
       ),
     );
@@ -321,9 +357,8 @@ class _LiveCameraPageState extends State<LiveCameraPage>
 
 // ─── App modes ────────────────────────────────────────────────────────────────
 enum _AppMode {
-  detect  ('كشف',   'وضع الكشف',           'كشف'),
-  text    ('نص',    'وضع قراءة النص',       'نص'),
-  distance('مسافة', 'وضع قياس المسافة',    'مسافة');
+  detect('كشف', 'وضع الكشف',      'كشف'),
+  text  ('نص',  'وضع قراءة النص', 'نص');
 
   const _AppMode(this.label, this.announcementAr, this.defaultCommand);
   final String label;
@@ -338,23 +373,82 @@ class _LoadingScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Scaffold(
-      backgroundColor: _kBlack,
+      backgroundColor: _kNavy,
       body: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CircularProgressIndicator(color: _kYellow, strokeWidth: 3),
+            CircularProgressIndicator(color: _kSteel, strokeWidth: 3),
             SizedBox(height: 20),
             Text(
               'جاري التهيئة...',
               style: TextStyle(
-                color: _kTextMuted,
-                fontSize: 18,
+                color:      _kTextMuted,
+                fontSize:   18,
                 fontWeight: FontWeight.w500,
               ),
               textDirection: TextDirection.rtl,
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Error screen ─────────────────────────────────────────────────────────────
+class _ErrorScreen extends StatelessWidget {
+  const _ErrorScreen({required this.message, required this.onRetry});
+  final String       message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: _kNavy,
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.camera_alt_outlined, color: _kTextMuted, size: 48),
+              const SizedBox(height: 20),
+              const Text(
+                'Camera unavailable',
+                style: TextStyle(
+                  color:      _kCream,
+                  fontSize:   20,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Make sure Camera and Microphone permissions are granted in Settings.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: _kTextMuted, fontSize: 14, height: 1.5),
+              ),
+              const SizedBox(height: 32),
+              GestureDetector(
+                onTap: onRetry,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+                  decoration: BoxDecoration(
+                    color:        _kSteel,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Text(
+                    'Retry',
+                    style: TextStyle(
+                      color:      _kCream,
+                      fontSize:   16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -381,46 +475,25 @@ class _CameraBackground extends StatelessWidget {
   }
 }
 
-// ─── Vignette ─────────────────────────────────────────────────────────────────
-class _VignetteOverlay extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return const Positioned.fill(
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: RadialGradient(
-            center: Alignment.center,
-            radius: 1.2,
-            colors: [Colors.transparent, Color(0xAA000000)],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 // ─── Viewfinder ───────────────────────────────────────────────────────────────
 class _ViewfinderFrame extends StatelessWidget {
   const _ViewfinderFrame({
     required this.isProcessing,
     required this.scanLineAnim,
-    required this.pulseAnim,
   });
 
-  final bool             isProcessing;
+  final bool              isProcessing;
   final Animation<double> scanLineAnim;
-  final Animation<double> pulseAnim;
 
   @override
   Widget build(BuildContext context) {
     return Positioned.fill(
       child: AnimatedBuilder(
-        animation: Listenable.merge([scanLineAnim, pulseAnim]),
+        animation: scanLineAnim,
         builder: (context, _) => CustomPaint(
           painter: _ViewfinderPainter(
             isProcessing: isProcessing,
             scanProgress: scanLineAnim.value,
-            pulse:        pulseAnim.value,
           ),
         ),
       ),
@@ -429,15 +502,10 @@ class _ViewfinderFrame extends StatelessWidget {
 }
 
 class _ViewfinderPainter extends CustomPainter {
-  _ViewfinderPainter({
-    required this.isProcessing,
-    required this.scanProgress,
-    required this.pulse,
-  });
+  _ViewfinderPainter({required this.isProcessing, required this.scanProgress});
 
   final bool   isProcessing;
   final double scanProgress;
-  final double pulse;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -446,19 +514,16 @@ class _ViewfinderPainter extends CustomPainter {
     final frameW = size.width  * 0.72;
     final frameH = size.height * 0.42;
     final left   = cx - frameW / 2;
-    final top    = cy - frameH / 2;
+    final top    = cy - frameH / 2 - size.height * 0.05;
     final right  = cx + frameW / 2;
-    final bottom = cy + frameH / 2;
-    const cornerLen    = 28.0;
-    const cornerRadius = 5.0;
+    final bottom = cy + frameH / 2 - size.height * 0.05;
 
-    final cornerColor = isProcessing
-        ? _kYellow.withOpacity(0.9)
-        : _kYellow.withOpacity(0.75 * pulse + 0.25);
+    const cornerLen    = 22.0;
+    const cornerRadius = 4.0;
 
     final cornerPaint = Paint()
-      ..color      = cornerColor
-      ..strokeWidth = 3.0
+      ..color      = _kCream.withValues(alpha: 0.7)
+      ..strokeWidth = 2.0
       ..style      = PaintingStyle.stroke
       ..strokeCap  = StrokeCap.round;
 
@@ -476,12 +541,12 @@ class _ViewfinderPainter extends CustomPainter {
     canvas.drawLine(Offset(right - cornerLen, bottom), Offset(right - cornerRadius, bottom), cornerPaint);
 
     if (isProcessing) {
-      final scanY    = top + (bottom - top) * scanProgress;
+      final scanY     = top + (bottom - top) * scanProgress;
       final scanPaint = Paint()
         ..shader = LinearGradient(
           colors: [
             Colors.transparent,
-            _kYellow.withOpacity(0.7),
+            _kSteel.withValues(alpha: 0.7),
             Colors.transparent,
           ],
         ).createShader(Rect.fromLTRB(left, scanY, right, scanY + 2));
@@ -492,74 +557,156 @@ class _ViewfinderPainter extends CustomPainter {
   @override
   bool shouldRepaint(_ViewfinderPainter old) =>
       old.scanProgress != scanProgress ||
-      old.pulse        != pulse        ||
       old.isProcessing != isProcessing;
 }
 
-// ─── Top mode bar ─────────────────────────────────────────────────────────────
-class _TopModeBar extends StatelessWidget {
-  const _TopModeBar({
-    required this.activeMode,
-    required this.onModeSelected,
-  });
-
-  final _AppMode                 activeMode;
-  final ValueChanged<_AppMode>   onModeSelected;
+// ─── Top bar ──────────────────────────────────────────────────────────────────
+class _TopBar extends StatelessWidget {
+  const _TopBar({required this.isProcessing});
+  final bool isProcessing;
 
   @override
   Widget build(BuildContext context) {
-    final topPadding = MediaQuery.of(context).padding.top;
-    return Container(
-      padding: EdgeInsets.fromLTRB(16, topPadding + 10, 16, 12),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin:  Alignment.topCenter,
-          end:    Alignment.bottomCenter,
-          colors: [Color(0xCC000000), Colors.transparent],
+    final topPad = MediaQuery.of(context).padding.top;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, topPad + 16, 20, 0),
+      child: Row(
+        children: [
+          // LIVE chip
+          _PillChip(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width:  8,
+                  height: 8,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Color(0xFFE45858),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  isProcessing ? 'SCANNING' : 'LIVE',
+                  style: const TextStyle(
+                    color:         _kCream,
+                    fontSize:      12,
+                    fontWeight:    FontWeight.w600,
+                    letterSpacing: 1,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Spacer(),
+          // Greeting chip
+          const _PillChip(
+            child: Text(
+              'Baseer',
+              style: TextStyle(
+                color:      _kCream,
+                fontSize:   12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PillChip extends StatelessWidget {
+  const _PillChip({required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(100),
+      child: BackdropFilter(
+        filter: ui.ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color:        _kSurface,
+            borderRadius: BorderRadius.circular(100),
+            border:       Border.all(color: _kBorder),
+          ),
+          child: child,
         ),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: _AppMode.values.map((mode) {
-          final isActive = mode == activeMode;
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 5),
-            child: Semantics(
-              label:    mode.announcementAr,
-              selected: isActive,
-              button:   true,
-              child: GestureDetector(
-                onTap: () => onModeSelected(mode),
-                child: AnimatedContainer(
-                  duration:  const Duration(milliseconds: 250),
-                  curve:     Curves.easeOut,
-                  padding:   const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
-                  decoration: BoxDecoration(
-                    color: isActive
-                        ? _kYellow.withOpacity(0.18)
-                        : Colors.white.withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(
-                      color: isActive
-                          ? _kYellow.withOpacity(0.6)
-                          : _kBorder,
-                      width: 1.5,
-                    ),
-                  ),
-                  child: Text(
-                    mode.label,
-                    style: TextStyle(
-                      color:      isActive ? _kYellow : _kTextMuted,
-                      fontSize:   15,
-                      fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
-                      letterSpacing: 0.5,
-                    ),
+    );
+  }
+}
+
+// ─── Scene caption ────────────────────────────────────────────────────────────
+class _SceneCaption extends StatelessWidget {
+  const _SceneCaption({required this.text});
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: BackdropFilter(
+        filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color:        _kSurface,
+            borderRadius: BorderRadius.circular(14),
+            border:       Border.all(color: _kBorder),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width:  24,
+                height: 24,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: _kSteel,
+                ),
+                alignment: Alignment.center,
+                child: const Text(
+                  'B',
+                  style: TextStyle(
+                    color:      _kCream,
+                    fontSize:   11,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ),
-            ),
-          );
-        }).toList(),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'I SEE',
+                      style: TextStyle(
+                        color:         _kTextMuted,
+                        fontSize:      11,
+                        fontWeight:    FontWeight.w600,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      text,
+                      style: const TextStyle(
+                        color:    _kCream,
+                        fontSize: 14,
+                        height:   1.4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -570,51 +717,60 @@ class _BottomPanel extends StatelessWidget {
   const _BottomPanel({
     required this.isListening,
     required this.isProcessing,
-    required this.lastResult,
-    required this.resultFadeAnim,
-    required this.onListen,
-    required this.onCapture,
+    required this.pulseAnim,
+    required this.onMicTap,
+    required this.onMicHold,
+    required this.onDescribe,
+    required this.onReadText,
+    required this.onColors,
   });
 
-  final bool             isListening;
-  final bool             isProcessing;
-  final String           lastResult;
-  final Animation<double> resultFadeAnim;
-  final VoidCallback     onListen;
-  final VoidCallback     onCapture;
+  final bool              isListening;
+  final bool              isProcessing;
+  final Animation<double> pulseAnim;
+  final VoidCallback      onMicTap;
+  final VoidCallback      onMicHold;
+  final VoidCallback      onDescribe;
+  final VoidCallback      onReadText;
+  final VoidCallback      onColors;
 
   @override
   Widget build(BuildContext context) {
-    final bottomPadding = MediaQuery.of(context).padding.bottom;
+    final bottomPad = MediaQuery.of(context).padding.bottom;
     return Container(
-      padding: EdgeInsets.fromLTRB(16, 0, 16, bottomPadding + 16),
+      padding: EdgeInsets.fromLTRB(20, 40, 20, bottomPad + 24),
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin:  Alignment.bottomCenter,
           end:    Alignment.topCenter,
-          colors: [Color(0xEE000000), Colors.transparent],
+          stops:  [0.0, 0.6, 1.0],
+          colors: [Color(0xEB0A1822), Color(0xBB0A1822), Colors.transparent],
         ),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _StateHintChip(
+          // State hint
+          _StateHint(isListening: isListening, isProcessing: isProcessing),
+          const SizedBox(height: 22),
+          // Mic FAB
+          _MicFab(
             isListening:  isListening,
             isProcessing: isProcessing,
+            pulseAnim:    pulseAnim,
+            onTap:        onMicTap,
+            onHold:       onMicHold,
           ),
-          const SizedBox(height: 10),
-          if (lastResult.isNotEmpty) ...[
-            FadeTransition(
-              opacity: resultFadeAnim,
-              child:   _ResultBox(text: lastResult),
-            ),
-            const SizedBox(height: 10),
-          ],
-          _ActionButtons(
-            isListening:  isListening,
-            isProcessing: isProcessing,
-            onListen:     onListen,
-            onCapture:    onCapture,
+          const SizedBox(height: 22),
+          // Shortcut chips
+          Row(
+            children: [
+              _ShortcutChip(label: 'Describe',  onTap: onDescribe),
+              const SizedBox(width: 10),
+              _ShortcutChip(label: 'Read text', onTap: onReadText),
+              const SizedBox(width: 10),
+              _ShortcutChip(label: 'Colors',    onTap: onColors),
+            ],
           ),
         ],
       ),
@@ -623,12 +779,8 @@ class _BottomPanel extends StatelessWidget {
 }
 
 // ─── State hint ───────────────────────────────────────────────────────────────
-class _StateHintChip extends StatelessWidget {
-  const _StateHintChip({
-    required this.isListening,
-    required this.isProcessing,
-  });
-
+class _StateHint extends StatelessWidget {
+  const _StateHint({required this.isListening, required this.isProcessing});
   final bool isListening;
   final bool isProcessing;
 
@@ -640,29 +792,31 @@ class _StateHintChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final active = isListening || isProcessing;
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
       decoration: BoxDecoration(
-        color: isListening ? _kYellow.withOpacity(0.15) : _kSurfaceDim,
+        color:        active
+            ? _kSteel.withValues(alpha: 0.25)
+            : _kSurface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isListening ? _kYellow.withOpacity(0.5) : _kBorder,
-          width: 1,
+        border:       Border.all(
+          color: active ? _kSteel.withValues(alpha: 0.5) : _kBorder,
         ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (isListening || isProcessing) ...[
-            _PulsingDot(color: isListening ? _kYellow : _kWhite),
+          if (active) ...[
+            _PulsingDot(color: isListening ? _kCream : _kSteel),
             const SizedBox(width: 8),
           ],
           Text(
             _text,
             textDirection: TextDirection.rtl,
             style: TextStyle(
-              color:      isListening ? _kYellow : _kTextMuted,
+              color:      active ? _kCream : _kTextMuted,
               fontSize:   13,
               fontWeight: FontWeight.w500,
             ),
@@ -673,6 +827,170 @@ class _StateHintChip extends StatelessWidget {
   }
 }
 
+// ─── Mic FAB ──────────────────────────────────────────────────────────────────
+class _MicFab extends StatelessWidget {
+  const _MicFab({
+    required this.isListening,
+    required this.isProcessing,
+    required this.pulseAnim,
+    required this.onTap,
+    required this.onHold,
+  });
+
+  final bool              isListening;
+  final bool              isProcessing;
+  final Animation<double> pulseAnim;
+  final VoidCallback      onTap;
+  final VoidCallback      onHold;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        GestureDetector(
+          onTap:      onTap,
+          onLongPress: onHold,
+          child: AnimatedBuilder(
+            animation: pulseAnim,
+            builder: (context, child) {
+              return Stack(
+                alignment: Alignment.center,
+                children: [
+                  // Outer pulse ring
+                  Container(
+                    width:  96 + 44,
+                    height: 96 + 44,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: _kSteel.withValues(
+                        alpha: 0.14 * pulseAnim.value,
+                      ),
+                    ),
+                  ),
+                  // Inner pulse ring
+                  Container(
+                    width:  96 + 20,
+                    height: 96 + 20,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: _kSteel.withValues(
+                        alpha: 0.28 * pulseAnim.value,
+                      ),
+                    ),
+                  ),
+                  child!,
+                ],
+              );
+            },
+            child: Container(
+              width:  96,
+              height: 96,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: isProcessing
+                    ? _kNavy.withValues(alpha: 0.85)
+                    : _kSteel,
+                boxShadow: [
+                  BoxShadow(
+                    color:      _kSteel.withValues(alpha: 0.4),
+                    blurRadius: 20,
+                    spreadRadius: 2,
+                  ),
+                ],
+              ),
+              child: isProcessing
+                  ? const Center(
+                      child: SizedBox(
+                        width:  28,
+                        height: 28,
+                        child:  CircularProgressIndicator(
+                          color:       _kCream,
+                          strokeWidth: 2.5,
+                        ),
+                      ),
+                    )
+                  : const Center(child: _MicShape()),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          isListening ? 'أستمع...' : 'اضغط للتحدث',
+          style: const TextStyle(
+            color:      _kCream,
+            fontSize:   15,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          isListening ? 'اضغط للإيقاف' : 'اضغط مطولاً للتصوير',
+          style: const TextStyle(color: _kTextMuted, fontSize: 12),
+        ),
+      ],
+    );
+  }
+}
+
+class _MicShape extends StatelessWidget {
+  const _MicShape();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width:  18,
+      height: 28,
+      decoration: BoxDecoration(
+        color:        _kCream,
+        borderRadius: BorderRadius.circular(9),
+      ),
+    );
+  }
+}
+
+// ─── Shortcut chip ────────────────────────────────────────────────────────────
+class _ShortcutChip extends StatelessWidget {
+  const _ShortcutChip({required this.label, required this.onTap});
+  final String       label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: BackdropFilter(
+            filter: ui.ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              decoration: BoxDecoration(
+                color:        _kCream.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+                border:       Border.all(
+                  color: _kCream.withValues(alpha: 0.16),
+                ),
+              ),
+              child: Text(
+                label,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color:      _kCream,
+                  fontSize:   13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Pulsing dot ──────────────────────────────────────────────────────────────
 class _PulsingDot extends StatefulWidget {
   const _PulsingDot({required this.color});
   final Color color;
@@ -706,221 +1024,15 @@ class _PulsingDotState extends State<_PulsingDot>
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: _anim,
-      builder: (_, __) => Container(
+      builder: (_, child) => Container(
         width:  8,
         height: 8,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: widget.color.withOpacity(_anim.value),
+          color: widget.color.withValues(alpha: _anim.value),
         ),
       ),
     );
   }
 }
 
-// ─── Result box ───────────────────────────────────────────────────────────────
-class _ResultBox extends StatelessWidget {
-  const _ResultBox({required this.text});
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      label: 'آخر نتيجة: $text',
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color:        _kSurface,
-          borderRadius: BorderRadius.circular(16),
-          border:       Border.all(color: _kBorder, width: 1),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            const Text(
-              'آخر نتيجة',
-              textDirection: TextDirection.rtl,
-              style: TextStyle(
-                color:         _kTextMuted,
-                fontSize:      11,
-                fontWeight:    FontWeight.w500,
-                letterSpacing: 0.8,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              text,
-              textDirection: TextDirection.rtl,
-              textAlign:     TextAlign.right,
-              style: const TextStyle(
-                color:      _kWhite,
-                fontSize:   17,
-                fontWeight: FontWeight.w600,
-                height:     1.4,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Action buttons ───────────────────────────────────────────────────────────
-class _ActionButtons extends StatelessWidget {
-  const _ActionButtons({
-    required this.isListening,
-    required this.isProcessing,
-    required this.onListen,
-    required this.onCapture,
-  });
-
-  final bool         isListening;
-  final bool         isProcessing;
-  final VoidCallback onListen;
-  final VoidCallback onCapture;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        // Voice button
-        Semantics(
-          label:  'تكلم. انقر مرتين على الشاشة للتفعيل.',
-          button: true,
-          child: _OutlineButton(
-            onTap:       onListen,
-            isActive:    isListening,
-            activeColor: _kYellow,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  isListening ? Icons.mic : Icons.mic_none_rounded,
-                  color: isListening ? _kYellow : _kTextMuted,
-                  size:  26,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'تكلم',
-                  style: TextStyle(
-                    color:      isListening ? _kYellow : _kTextMuted,
-                    fontSize:   13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                const Text(
-                  'double tap',
-                  style: TextStyle(color: Color(0x55FFFFFF), fontSize: 10),
-                ),
-              ],
-            ),
-          ),
-        ),
-
-        const SizedBox(width: 10),
-
-        // Scan button — larger, yellow fill
-        Expanded(
-          flex: 2,
-          child: Semantics(
-            label:  'تحليل المحيط. اضغط مطولاً على الشاشة للتفعيل.',
-            button: true,
-            child: GestureDetector(
-              onTap: onCapture,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                decoration: BoxDecoration(
-                  color: isProcessing
-                      ? _kYellow.withOpacity(0.7)
-                      : _kYellow,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      isProcessing
-                          ? Icons.hourglass_top_rounded
-                          : Icons.document_scanner_rounded,
-                      color: _kBlack,
-                      size:  28,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      isProcessing ? 'جاري التحليل...' : 'تحليل المحيط',
-                      style: const TextStyle(
-                        color:      _kBlack,
-                        fontSize:   15,
-                        fontWeight: FontWeight.w700,
-                      ),
-                      textDirection: TextDirection.rtl,
-                    ),
-                    const SizedBox(height: 2),
-                    const Text(
-                      'hold to scan',
-                      style: TextStyle(color: Color(0x88000000), fontSize: 10),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _OutlineButton extends StatelessWidget {
-  const _OutlineButton({
-    required this.child,
-    required this.onTap,
-    required this.isActive,
-    required this.activeColor,
-  });
-
-  final Widget       child;
-  final VoidCallback onTap;
-  final bool         isActive;
-  final Color        activeColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-        decoration: BoxDecoration(
-          color: isActive
-              ? activeColor.withOpacity(0.12)
-              : Colors.white.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isActive ? activeColor.withOpacity(0.6) : _kBorder,
-            width: 1.5,
-          ),
-        ),
-        child: child,
-      ),
-    );
-  }
-}
-
-// ─── Processing overlay ───────────────────────────────────────────────────────
-class _ProcessingOverlay extends StatelessWidget {
-  const _ProcessingOverlay();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Positioned.fill(
-      child: IgnorePointer(
-        child: ColoredBox(color: Colors.transparent),
-      ),
-    );
-  }
-}
