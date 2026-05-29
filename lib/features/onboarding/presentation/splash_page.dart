@@ -22,8 +22,8 @@ class _SplashPageState extends State<SplashPage> {
       if (mounted) TTSService().speak('مرحباً بك في بصير').catchError((_) {});
     }).catchError((_) {});
 
-    Future.delayed(const Duration(milliseconds: 2500), () {
-      if (mounted) Navigator.pushReplacementNamed(context, '/welcome');
+    Future.delayed(const Duration(milliseconds: 1500), () {
+      if (mounted) Navigator.pushReplacementNamed(context, '/permissions');
     });
   }
 

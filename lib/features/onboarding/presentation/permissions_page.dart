@@ -59,8 +59,8 @@ class _PermissionsPageState extends State<PermissionsPage> {
   }
 
   Future<void> _speakIntro() => TTSService().speak(AppSettings().t(
-    'الخطوة الأولى من ثلاثة. نحتاج إذن الكاميرا والميكروفون للعمل. اضغط السماح والمتابعة.',
-    'Step 1 of 3. We need Camera and Microphone access to work. Tap Allow and continue.',
+    'نحتاج إذن الكاميرا والميكروفون للعمل. اضغط السماح والمتابعة.',
+    'We need Camera and Microphone access to work. Tap Allow and continue.',
   ));
 
   Future<void> _requestAndContinue() async {
@@ -122,7 +122,7 @@ class _PermissionsPageState extends State<PermissionsPage> {
 
     TTSService().stop();
     if (!mounted) return;
-    Navigator.pushNamed(context, '/voice_setup');
+    Navigator.pushNamedAndRemoveUntil(context, '/camera', (route) => false);
   }
 
   @override
@@ -136,13 +136,6 @@ class _PermissionsPageState extends State<PermissionsPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                s.t('الخطوة ١ من ٣', 'STEP 1 OF 3'),
-                style: const TextStyle(
-                  color: _kSteel, fontSize: 13, fontWeight: FontWeight.w600, letterSpacing: 1,
-                ),
-              ),
-              const SizedBox(height: 8),
               Text(
                 s.t('بعض الأذونات', 'A few permissions'),
                 style: const TextStyle(
