@@ -42,3 +42,12 @@ android {
 flutter {
     source = "../.."
 }
+
+// Increase Dart frontend-compiler heap to avoid OOM during kernel compilation.
+afterEvaluate {
+    tasks.matching { it.name.startsWith("compileFlutterBuild") }.configureEach {
+        if (this is Exec) {
+            environment("DART_VM_OPTIONS", "--old_gen_heap_size=4096")
+        }
+    }
+}

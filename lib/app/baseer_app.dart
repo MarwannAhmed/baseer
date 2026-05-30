@@ -1,4 +1,7 @@
-import 'package:baseer/features/camera/presentation/pages/camera_launcher_page.dart';
+// lib/baseer_app.dart
+
+import '../app/router.dart';
+import '../features/onboarding/presentation/splash_page.dart';
 import 'package:flutter/material.dart';
 
 class BaseerApp extends StatelessWidget {
@@ -6,9 +9,12 @@ class BaseerApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
+    return MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: CameraLauncherPage(),
+      // Use home: so the SplashPage widget is always the first frame rendered.
+      // initialRoute + onGenerateRoute can miss the first paint on slow devices.
+      home: const SplashPage(),
+      onGenerateRoute: AppRouter.generateRoute,
     );
   }
 }
