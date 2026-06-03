@@ -12,7 +12,6 @@ import 'package:image/image.dart' as img;
 import 'package:speech_to_text/speech_to_text.dart';
 
 import 'package:baseer/core/services/tts_narrator.dart';
-import 'package:baseer/features/color_recognition/application/color_detector.dart';
 import 'package:baseer/features/color_recognition/application/color_detector_factory.dart';
 
 import 'package:baseer/features/analysis/domain/detected_object.dart';

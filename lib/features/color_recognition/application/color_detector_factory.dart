@@ -34,19 +34,27 @@ class ColorDetectorFactory {
     };
   }
 
-  Future<void> detectColorsForObjects(
+  Future<List<DetectedObject>> detectColorsForObjects(
     img.Image frame,
     List<DetectedObject> objects,
   ) async {
     await setFrame(frame);
-    for (final obj in objects) {
+    return objects.map((obj) {
       final r = detect(
         obj.bbox['x1'] ?? 0, obj.bbox['y1'] ?? 0,
         obj.bbox['x2'] ?? 0, obj.bbox['y2'] ?? 0,
       );
-      obj.colorEn = r.colorEn;
-      obj.colorAr = r.colorAr;
-    }
+      return DetectedObject(
+        label:      obj.label,
+        confidence: obj.confidence,
+        bbox:       obj.bbox,
+        center:     obj.center,
+        size:       obj.size,
+        colorEn:    r.colorEn,
+        colorAr:    r.colorAr,
+        distanceCm: obj.distanceCm,
+      );
+    }).toList();
   }
 }
 
