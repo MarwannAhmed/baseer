@@ -1,4 +1,4 @@
-const List<String> objectClassNames = [
+const List<String> cocoClassNames = [
   'person',        
   'bicycle',       
   'car',           

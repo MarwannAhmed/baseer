@@ -14,10 +14,11 @@ import 'package:speech_to_text/speech_to_text.dart';
 import 'package:baseer/core/services/tts_narrator.dart';
 import 'package:baseer/features/color_recognition/application/color_detector.dart';
 
+import 'package:baseer/features/analysis/domain/detected_object.dart';
 import 'package:baseer/features/object_detection/application/object_detection_service.dart';
 import 'package:baseer/features/object_detection/application/detection_formatter.dart';
+import 'package:baseer/features/object_detection/domain/detection_result.dart';
 import 'package:baseer/features/object_detection/domain/coco_labels.dart';
-
 import 'package:baseer/core/command_router.dart';
 
 img.Image? _decodeImageBytes(Uint8List bytes) => img.decodeImage(bytes);
@@ -54,8 +55,8 @@ class _LiveCameraPageState extends State<LiveCameraPage>
 
   final ObjectDetectionService _objectDetector =
       ObjectDetectionService.onDevice(
-        classNames: objectClassNames,
-        modelPath: 'assets/ml/yolov8n_int8.onnx',
+        classNames: cocoClassNames,
+        modelAssetPath: 'assets/ml/yolov8n_int8.onnx',
       );
 
   // ── Silent input / mode overlay ──
@@ -71,6 +72,7 @@ class _LiveCameraPageState extends State<LiveCameraPage>
   String _lastCommand = 'كشف';
   String _sttLocale = 'ar_EG';
   String _lastResult = '';
+  List<DetectedObject> _lastDetectedObjects = [];
   _AppMode _activeMode = _AppMode.detect;
 
   // ── Animations ──
@@ -282,6 +284,7 @@ class _LiveCameraPageState extends State<LiveCameraPage>
   }
 
   // ─── On-device object detection ───────────────────────────────────────────
+  // ─── On-device object detection ───────────────────────────────────────────
   Future<void> _captureAndDetectObjects() async {
     if (_isProcessing) return;
     setState(() {
@@ -308,7 +311,9 @@ class _LiveCameraPageState extends State<LiveCameraPage>
       setState(() => _lastResult = sentence);
       _resultFadeController.forward();
       await TtsNarrator.instance.speak(sentence);
-    } catch (e) {
+    } catch (e, stack) {
+      debugPrint('🔴 Detection error: $e'); // 🟢
+      debugPrint('🔴 Stack: $stack'); // 🟢
       await TtsNarrator.instance.speak('خطأ في الكشف');
     } finally {
       if (mounted) setState(() => _isProcessing = false);
