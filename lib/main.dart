@@ -7,7 +7,7 @@ Future<void> main() async {
   try {
     await dotenv.load(fileName: '.env');
   } catch (_) {}
-  ColorDetectorFactory.mode = ColorDetectorMode.svm;
+  ColorDetectorFactory.mode = ColorDetectorMode.ruleBased;
   
   runApp(const BaseerApp());
 }
