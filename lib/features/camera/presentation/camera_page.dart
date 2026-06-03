@@ -14,6 +14,12 @@ import 'package:speech_to_text/speech_to_text.dart';
 import 'package:baseer/core/services/tts_narrator.dart';
 import 'package:baseer/features/color_recognition/application/color_detector.dart';
 
+import 'package:baseer/features/object_detection/application/object_detection_service.dart';
+import 'package:baseer/features/object_detection/application/detection_formatter.dart';
+import 'package:baseer/features/object_detection/domain/coco_labels.dart';
+
+import 'package:baseer/core/command_router.dart';
+
 img.Image? _decodeImageBytes(Uint8List bytes) => img.decodeImage(bytes);
 
 // ─── Design tokens ──────────────────────────────────────────────────────────
@@ -45,6 +51,12 @@ class _LiveCameraPageState extends State<LiveCameraPage>
   late List<CameraDescription> _cameras;
   final SpeechToText _speech = SpeechToText();
   final ColorDetector _colorDetector = ColorDetector();
+
+  final ObjectDetectionService _objectDetector =
+      ObjectDetectionService.onDevice(
+        classNames: objectClassNames,
+        modelPath: 'assets/ml/yolov8n_int8.onnx',
+      );
 
   // ── Silent input / mode overlay ──
   bool _showSilentInput = false;
@@ -113,6 +125,8 @@ class _LiveCameraPageState extends State<LiveCameraPage>
     );
     await _controller!.initialize();
 
+    await _objectDetector.init();
+
     // Show camera preview immediately — don't wait for speech services.
     if (!mounted) return;
     setState(() {});
@@ -120,7 +134,8 @@ class _LiveCameraPageState extends State<LiveCameraPage>
     await _speech.initialize(
       onStatus: (status) {
         if ((status == 'done' || status == 'notListening') &&
-            mounted && _isListening) {
+            mounted &&
+            _isListening) {
           setState(() => _isListening = false);
         }
       },
@@ -140,7 +155,9 @@ class _LiveCameraPageState extends State<LiveCameraPage>
     await TtsNarrator.instance.speak('بصير جاهز.');
     await Future.delayed(const Duration(milliseconds: 700));
     if (!mounted) return;
-    await TtsNarrator.instance.speak('انقر مرتين في أي مكان على الشاشة للتحدث.');
+    await TtsNarrator.instance.speak(
+      'انقر مرتين في أي مكان على الشاشة للتحدث.',
+    );
     await Future.delayed(const Duration(milliseconds: 700));
     if (!mounted) return;
     await TtsNarrator.instance.speak('اضغط بشكل مطوّل للتقاط صورة وتحليلها.');
@@ -194,6 +211,17 @@ class _LiveCameraPageState extends State<LiveCameraPage>
         if (result.recognizedWords.isNotEmpty) {
           _lastCommand = result.recognizedWords;
           await TtsNarrator.instance.speak('قلت: ${result.recognizedWords}');
+
+          final command = CommandRouter.route(result.recognizedWords);
+          if (command == AppCommand.detectObject) {
+            await _switchMode(_AppMode.detect);
+          } else if (command == AppCommand.detectColor) {
+            await _switchMode(_AppMode.color);
+          } else if (command == AppCommand.readText) {
+            await _switchMode(_AppMode.text);
+          } else if (command == AppCommand.estimateDistance) {
+            await _switchMode(_AppMode.distance);
+          }
         } else {
           await TtsNarrator.instance.speak('لم أسمع شيئاً. حاول مجدداً.');
         }
@@ -207,9 +235,13 @@ class _LiveCameraPageState extends State<LiveCameraPage>
   }
 
   // ─── Capture dispatcher ───────────────────────────────────────────────────
+
+  // AFTER
   Future<void> _onCapture() async {
     if (_activeMode == _AppMode.color) {
       await _captureAndDetectColor();
+    } else if (_activeMode == _AppMode.detect) {
+      await _captureAndDetectObjects();
     } else {
       await _captureAndSend();
     }
@@ -218,7 +250,10 @@ class _LiveCameraPageState extends State<LiveCameraPage>
   // ─── Local color detection ────────────────────────────────────────────────
   Future<void> _captureAndDetectColor() async {
     if (_isProcessing) return;
-    setState(() { _isProcessing = true; _showSilentInput = false; });
+    setState(() {
+      _isProcessing = true;
+      _showSilentInput = false;
+    });
     _resultFadeController.reverse();
     HapticFeedback.heavyImpact();
 
@@ -241,6 +276,40 @@ class _LiveCameraPageState extends State<LiveCameraPage>
       await TtsNarrator.instance.speak('اللون ${result.colorAr}');
     } catch (_) {
       await TtsNarrator.instance.speak('خطأ في كشف اللون');
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
+    }
+  }
+
+  // ─── On-device object detection ───────────────────────────────────────────
+  Future<void> _captureAndDetectObjects() async {
+    if (_isProcessing) return;
+    setState(() {
+      _isProcessing = true;
+      _showSilentInput = false;
+    });
+    _resultFadeController.reverse();
+    HapticFeedback.heavyImpact();
+
+    try {
+      final XFile file = await _controller!.takePicture();
+      await TtsNarrator.instance.speak('جاري الكشف');
+
+      final bytes = await File(file.path).readAsBytes();
+      final frame = await compute(_decodeImageBytes, bytes);
+      if (frame == null) {
+        await TtsNarrator.instance.speak('تعذّر تحليل الصورة');
+        return;
+      }
+
+      final results = await _objectDetector.detect(frame);
+      final sentence = DetectionFormatter.toSentence(results, isArabic: true);
+
+      setState(() => _lastResult = sentence);
+      _resultFadeController.forward();
+      await TtsNarrator.instance.speak(sentence);
+    } catch (e) {
+      await TtsNarrator.instance.speak('خطأ في الكشف');
     } finally {
       if (mounted) setState(() => _isProcessing = false);
     }
@@ -271,8 +340,9 @@ class _LiveCameraPageState extends State<LiveCameraPage>
         ..fields['command'] = command
         ..files.add(await http.MultipartFile.fromPath('file', imagePath));
 
-      final response =
-          await request.send().timeout(const Duration(seconds: 30));
+      final response = await request.send().timeout(
+        const Duration(seconds: 30),
+      );
 
       if (response.statusCode == 200) {
         final body = await response.stream.bytesToString();
@@ -357,7 +427,8 @@ class _LiveCameraPageState extends State<LiveCameraPage>
           // ── Full-screen invisible gesture layer ──────────────────────
           Positioned.fill(
             child: Semantics(
-              label: 'منطقة الكاميرا. انقر مرتين للتحدث. اضغط مطولاً للمسح. امسح لتغيير الوضع.',
+              label:
+                  'منطقة الكاميرا. انقر مرتين للتحدث. اضغط مطولاً للمسح. امسح لتغيير الوضع.',
               child: GestureDetector(
                 behavior: HitTestBehavior.translucent,
                 onDoubleTap: _startListening,
@@ -366,7 +437,8 @@ class _LiveCameraPageState extends State<LiveCameraPage>
                   if (details.primaryVelocity == null) return;
                   final modes = _AppMode.values;
                   final idx = modes.indexOf(_activeMode);
-                  if (details.primaryVelocity! < -300 && idx < modes.length - 1) {
+                  if (details.primaryVelocity! < -300 &&
+                      idx < modes.length - 1) {
                     _switchMode(modes[idx + 1]);
                   } else if (details.primaryVelocity! > 300 && idx > 0) {
                     _switchMode(modes[idx - 1]);
@@ -383,7 +455,10 @@ class _LiveCameraPageState extends State<LiveCameraPage>
             child: IgnorePointer(
               child: Center(
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 18),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 36,
+                    vertical: 18,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xEE152E3E),
                     borderRadius: BorderRadius.circular(32),
@@ -431,7 +506,10 @@ class _LiveCameraPageState extends State<LiveCameraPage>
                               color: const Color(0xCC152E3E),
                               borderRadius: BorderRadius.circular(16),
                             ),
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 4,
+                            ),
                             child: Row(
                               children: [
                                 Expanded(
@@ -439,10 +517,14 @@ class _LiveCameraPageState extends State<LiveCameraPage>
                                     controller: _silentInputCtrl,
                                     textDirection: TextDirection.rtl,
                                     autofocus: _showSilentInput,
-                                    style: const TextStyle(color: Color(0xFFF7F5F0)),
+                                    style: const TextStyle(
+                                      color: Color(0xFFF7F5F0),
+                                    ),
                                     decoration: const InputDecoration(
                                       hintText: 'اكتب أمرك هنا...',
-                                      hintStyle: TextStyle(color: Color(0x80F7F5F0)),
+                                      hintStyle: TextStyle(
+                                        color: Color(0x80F7F5F0),
+                                      ),
                                       border: InputBorder.none,
                                     ),
                                     onSubmitted: (_) => _submitSilentInput(),
@@ -452,7 +534,10 @@ class _LiveCameraPageState extends State<LiveCameraPage>
                                   label: 'إرسال',
                                   button: true,
                                   child: IconButton(
-                                    icon: const Icon(Icons.send_rounded, color: Color(0xFF2D6A8E)),
+                                    icon: const Icon(
+                                      Icons.send_rounded,
+                                      color: Color(0xFF2D6A8E),
+                                    ),
                                     onPressed: _submitSilentInput,
                                   ),
                                 ),
@@ -480,6 +565,7 @@ class _LiveCameraPageState extends State<LiveCameraPage>
     _modeOverlayTimer?.cancel();
     _silentInputCtrl.dispose();
     _controller?.dispose();
+    _objectDetector.dispose();
     _speech.stop();
     TtsNarrator.instance.stop();
     super.dispose();
@@ -623,8 +709,8 @@ class _ViewfinderPainter extends CustomPainter {
     const cornerRadius = 5.0;
 
     final cornerColor = isProcessing
-        ? _kSteel.withValues(alpha:0.9)
-        : _kSteel.withValues(alpha:0.75 * pulse + 0.25);
+        ? _kSteel.withValues(alpha: 0.9)
+        : _kSteel.withValues(alpha: 0.75 * pulse + 0.25);
     final cornerPaint = Paint()
       ..color = cornerColor
       ..strokeWidth = 3.0
@@ -632,17 +718,49 @@ class _ViewfinderPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round;
 
     // Top-left
-    canvas.drawLine(Offset(left + cornerRadius, top), Offset(left + cornerLen, top), cornerPaint);
-    canvas.drawLine(Offset(left, top + cornerRadius), Offset(left, top + cornerLen), cornerPaint);
+    canvas.drawLine(
+      Offset(left + cornerRadius, top),
+      Offset(left + cornerLen, top),
+      cornerPaint,
+    );
+    canvas.drawLine(
+      Offset(left, top + cornerRadius),
+      Offset(left, top + cornerLen),
+      cornerPaint,
+    );
     // Top-right
-    canvas.drawLine(Offset(right - cornerLen, top), Offset(right - cornerRadius, top), cornerPaint);
-    canvas.drawLine(Offset(right, top + cornerRadius), Offset(right, top + cornerLen), cornerPaint);
+    canvas.drawLine(
+      Offset(right - cornerLen, top),
+      Offset(right - cornerRadius, top),
+      cornerPaint,
+    );
+    canvas.drawLine(
+      Offset(right, top + cornerRadius),
+      Offset(right, top + cornerLen),
+      cornerPaint,
+    );
     // Bottom-left
-    canvas.drawLine(Offset(left, bottom - cornerLen), Offset(left, bottom - cornerRadius), cornerPaint);
-    canvas.drawLine(Offset(left + cornerRadius, bottom), Offset(left + cornerLen, bottom), cornerPaint);
+    canvas.drawLine(
+      Offset(left, bottom - cornerLen),
+      Offset(left, bottom - cornerRadius),
+      cornerPaint,
+    );
+    canvas.drawLine(
+      Offset(left + cornerRadius, bottom),
+      Offset(left + cornerLen, bottom),
+      cornerPaint,
+    );
     // Bottom-right
-    canvas.drawLine(Offset(right, bottom - cornerLen), Offset(right, bottom - cornerRadius), cornerPaint);
-    canvas.drawLine(Offset(right - cornerLen, bottom), Offset(right - cornerRadius, bottom), cornerPaint);
+    canvas.drawLine(
+      Offset(right, bottom - cornerLen),
+      Offset(right, bottom - cornerRadius),
+      cornerPaint,
+    );
+    canvas.drawLine(
+      Offset(right - cornerLen, bottom),
+      Offset(right - cornerRadius, bottom),
+      cornerPaint,
+    );
 
     if (isProcessing) {
       final scanY = top + (bottom - top) * scanProgress;
@@ -650,7 +768,7 @@ class _ViewfinderPainter extends CustomPainter {
         ..shader = LinearGradient(
           colors: [
             Colors.transparent,
-            _kSteel.withValues(alpha:0.7),
+            _kSteel.withValues(alpha: 0.7),
             Colors.transparent,
           ],
         ).createShader(Rect.fromLTRB(left, scanY, right, scanY + 2));
@@ -667,10 +785,7 @@ class _ViewfinderPainter extends CustomPainter {
 
 // ─── Top mode bar ─────────────────────────────────────────────────────────────
 class _TopModeBar extends StatelessWidget {
-  const _TopModeBar({
-    required this.activeMode,
-    required this.onModeSelected,
-  });
+  const _TopModeBar({required this.activeMode, required this.onModeSelected});
 
   final _AppMode activeMode;
   final ValueChanged<_AppMode> onModeSelected;
@@ -702,14 +817,19 @@ class _TopModeBar extends StatelessWidget {
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 250),
                   curve: Curves.easeOut,
-                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 9,
+                  ),
                   decoration: BoxDecoration(
                     color: isActive
-                        ? _kSteel.withValues(alpha:0.18)
-                        : Colors.white.withValues(alpha:0.08),
+                        ? _kSteel.withValues(alpha: 0.18)
+                        : Colors.white.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(24),
                     border: Border.all(
-                      color: isActive ? _kSteel.withValues(alpha:0.6) : _kBorder,
+                      color: isActive
+                          ? _kSteel.withValues(alpha: 0.6)
+                          : _kBorder,
                       width: 1.5,
                     ),
                   ),
@@ -806,10 +926,10 @@ class _StateHintChip extends StatelessWidget {
       duration: const Duration(milliseconds: 300),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
       decoration: BoxDecoration(
-        color: isListening ? _kSteel.withValues(alpha:0.15) : _kSurfaceDim,
+        color: isListening ? _kSteel.withValues(alpha: 0.15) : _kSurfaceDim,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: isListening ? _kSteel.withValues(alpha:0.5) : _kBorder,
+          color: isListening ? _kSteel.withValues(alpha: 0.5) : _kBorder,
           width: 1,
         ),
       ),
@@ -873,7 +993,7 @@ class _PulsingDotState extends State<_PulsingDot>
         height: 8,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: widget.color.withValues(alpha:_anim.value),
+          color: widget.color.withValues(alpha: _anim.value),
         ),
       ),
     );
@@ -992,7 +1112,9 @@ class _ActionButtons extends StatelessWidget {
                 duration: const Duration(milliseconds: 200),
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 decoration: BoxDecoration(
-                  color: isProcessing ? _kSteel.withValues(alpha:0.7) : _kSteel,
+                  color: isProcessing
+                      ? _kSteel.withValues(alpha: 0.7)
+                      : _kSteel,
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Column(
@@ -1053,11 +1175,11 @@ class _OutlineButton extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
         decoration: BoxDecoration(
           color: isActive
-              ? activeColor.withValues(alpha:0.12)
-              : Colors.white.withValues(alpha:0.08),
+              ? activeColor.withValues(alpha: 0.12)
+              : Colors.white.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: isActive ? activeColor.withValues(alpha:0.6) : _kBorder,
+            color: isActive ? activeColor.withValues(alpha: 0.6) : _kBorder,
             width: 1.5,
           ),
         ),
@@ -1074,9 +1196,7 @@ class _ProcessingOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Positioned.fill(
-      child: IgnorePointer(
-        child: ColoredBox(color: Colors.transparent),
-      ),
+      child: IgnorePointer(child: ColoredBox(color: Colors.transparent)),
     );
   }
 }
