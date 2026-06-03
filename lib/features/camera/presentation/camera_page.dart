@@ -13,6 +13,7 @@ import 'package:speech_to_text/speech_to_text.dart';
 
 import 'package:baseer/core/services/tts_narrator.dart';
 import 'package:baseer/features/color_recognition/application/color_detector.dart';
+import 'package:baseer/features/color_recognition/application/color_detector_factory.dart';
 
 img.Image? _decodeImageBytes(Uint8List bytes) => img.decodeImage(bytes);
 
@@ -44,7 +45,7 @@ class _LiveCameraPageState extends State<LiveCameraPage>
   CameraController? _controller;
   late List<CameraDescription> _cameras;
   final SpeechToText _speech = SpeechToText();
-  final ColorDetector _colorDetector = ColorDetector();
+  final ColorDetectorFactory _colorDetector = ColorDetectorFactory();
 
   // ── Silent input / mode overlay ──
   bool _showSilentInput = false;
@@ -553,14 +554,12 @@ class _CameraBackground extends StatelessWidget {
 class _VignetteOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return const Positioned.fill(
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: RadialGradient(
-            center: Alignment.center,
-            radius: 1.2,
-            colors: [Colors.transparent, Color(0xAA000000)],
-          ),
+    return const DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: RadialGradient(
+          center: Alignment.center,
+          radius: 1.2,
+          colors: [Colors.transparent, Color(0xAA000000)],
         ),
       ),
     );

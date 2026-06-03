@@ -1,10 +1,8 @@
 import 'dart:math';
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Public types
-// ─────────────────────────────────────────────────────────────────────────────
 
 class ColorResult {
   final String colorEn;
@@ -14,10 +12,6 @@ class ColorResult {
   @override
   String toString() => '$colorEn / $colorAr';
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Constants
-// ─────────────────────────────────────────────────────────────────────────────
 
 // ── Gray world clamping ───────────────────────────────────────────────────────
 // Without clamping, a scene dominated by one colour (e.g. a red wall) causes
@@ -110,6 +104,8 @@ const Map<String, String> _colorArabic = {
   'gray':   'رمادي',
   'black':  'أسود',
 };
+
+const ColorResult _grayFallback = ColorResult(colorEn: 'gray', colorAr: 'رمادي');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // sRGB → OpenCV LAB  (matches cv2.COLOR_BGR2LAB exactly)
@@ -229,49 +225,19 @@ class ColorDetector {
   ColorResult detect(int x1, int y1, int x2, int y2) {
     if (_labFrame == null) throw StateError('Call setFrame() first.');
 
-    x1 = x1.clamp(0, _frameWidth);
-    x2 = x2.clamp(0, _frameWidth);
-    y1 = y1.clamp(0, _frameHeight);
-    y2 = y2.clamp(0, _frameHeight);
+    x1 = _clampToFrame(x1, _frameWidth);
+    x2 = _clampToFrame(x2, _frameWidth);
+    y1 = _clampToFrame(y1, _frameHeight);
+    y2 = _clampToFrame(y2, _frameHeight);
 
     if (x2 <= x1 || y2 <= y1) return _fallback();
     if ((x2 - x1) * (y2 - y1) < _minBboxArea) return _fallback();
 
-    // ── Center crop ──────────────────────────────────────────────────────────
-    final int bw = x2 - x1, bh = y2 - y1;
-    final int dx = (bw * (1.0 - _centerCropRatio) / 2.0).round();
-    final int dy = (bh * (1.0 - _centerCropRatio) / 2.0).round();
-    final int cx1 = (dx > 0 && x1+dx < x2-dx) ? x1+dx : x1;
-    final int cx2 = (dx > 0 && x1+dx < x2-dx) ? x2-dx : x2;
-    final int cy1 = (dy > 0 && y1+dy < y2-dy) ? y1+dy : y1;
-    final int cy2 = (dy > 0 && y1+dy < y2-dy) ? y2-dy : y2;
-
-    // ── Sample pixels ─────────────────────────────────────────────────────────
-    final int croppedW = cx2 - cx1;
-    final int croppedH = cy2 - cy1;
-    final int sampledCount =
-        ((croppedW + _pixelStride - 1) ~/ _pixelStride) *
-        ((croppedH + _pixelStride - 1) ~/ _pixelStride);
-
-    final Float32List buf = Float32List(sampledCount * 3);
-    int count = 0;
-
-    for (int py = cy1; py < cy2; py += _pixelStride) {
-      for (int px = cx1; px < cx2; px += _pixelStride) {
-        final int src = (py * _frameWidth + px) * 3;
-        final int dst = count * 3;
-        buf[dst    ] = _labFrame![src    ];
-        buf[dst + 1] = _labFrame![src + 1];
-        buf[dst + 2] = _labFrame![src + 2];
-        count++;
-      }
-    }
-
-    if (count == 0) return _fallback();
+    final Float32List pixels = _sampleLabPixels(x1, y1, x2, y2);
+    if (pixels.isEmpty) return _fallback();
 
     // ── Filter low-chroma pixels, then K-Means ────────────────────────────────
-    final Float32List pixels  = Float32List.sublistView(buf, 0, count * 3);
-    Float32List       filtered = _filterLowChroma(pixels, count);
+    Float32List filtered = _filterLowChroma(pixels, pixels.length ~/ 3);
     if (filtered.length ~/ 3 < 10) filtered = pixels;
 
     final Float32List dominant = _dominantLabColor(filtered, filtered.length ~/ 3);
@@ -298,26 +264,53 @@ class ColorDetector {
   // ── Private helpers ────────────────────────────────────────────────────────
 
   ColorResult _fallback() =>
-      const ColorResult(colorEn: 'gray', colorAr: 'رمادي');
+      _grayFallback;
+
+  int _clampToFrame(int value, int maxValue) => value.clamp(0, maxValue).toInt();
+
+  Float32List _sampleLabPixels(int x1, int y1, int x2, int y2) {
+    final int cropWidth = x2 - x1;
+    final int cropHeight = y2 - y1;
+    final int sampleCapacity =
+        ((cropWidth + _pixelStride - 1) ~/ _pixelStride) *
+        ((cropHeight + _pixelStride - 1) ~/ _pixelStride);
+
+    final Float32List sampled = Float32List(sampleCapacity * 3);
+    int count = 0;
+
+    for (int py = y1; py < y2; py += _pixelStride) {
+      for (int px = x1; px < x2; px += _pixelStride) {
+        final int sourceIndex = (py * _frameWidth + px) * 3;
+        final int targetIndex = count * 3;
+        sampled[targetIndex] = _labFrame![sourceIndex];
+        sampled[targetIndex + 1] = _labFrame![sourceIndex + 1];
+        sampled[targetIndex + 2] = _labFrame![sourceIndex + 2];
+        count++;
+      }
+    }
+
+    return Float32List.sublistView(sampled, 0, count * 3);
+  }
 
   Float32List _filterLowChroma(Float32List pixels, int count) {
+    final double thresholdSquared = _chromaFilterThreshold * _chromaFilterThreshold;
     int kept = 0;
     for (int i = 0; i < count; i++) {
-      final double da = pixels[i*3+1] - 128.0;
-      final double db = pixels[i*3+2] - 128.0;
-      if (da*da + db*db >= _chromaFilterThreshold * _chromaFilterThreshold) kept++;
+      final double da = pixels[i * 3 + 1] - 128.0;
+      final double db = pixels[i * 3 + 2] - 128.0;
+      if (da * da + db * db >= thresholdSquared) kept++;
     }
     if (kept == 0) return pixels;
 
     final Float32List out = Float32List(kept * 3);
     int j = 0;
     for (int i = 0; i < count; i++) {
-      final double da = pixels[i*3+1] - 128.0;
-      final double db = pixels[i*3+2] - 128.0;
-      if (da*da + db*db >= _chromaFilterThreshold * _chromaFilterThreshold) {
-        out[j*3    ] = pixels[i*3    ];
-        out[j*3 + 1] = pixels[i*3 + 1];
-        out[j*3 + 2] = pixels[i*3 + 2];
+      final double da = pixels[i * 3 + 1] - 128.0;
+      final double db = pixels[i * 3 + 2] - 128.0;
+      if (da * da + db * db >= thresholdSquared) {
+        out[j * 3] = pixels[i * 3];
+        out[j * 3 + 1] = pixels[i * 3 + 1];
+        out[j * 3 + 2] = pixels[i * 3 + 2];
         j++;
       }
     }
@@ -400,7 +393,9 @@ class ColorDetector {
   Float32List _meanColor(Float32List pixels, int count) {
     double l = 0, a = 0, b = 0;
     for (int i = 0; i < count; i++) {
-      l += pixels[i*3]; a += pixels[i*3+1]; b += pixels[i*3+2];
+      l += pixels[i * 3];
+      a += pixels[i * 3 + 1];
+      b += pixels[i * 3 + 2];
     }
     return Float32List.fromList([l/count, a/count, b/count]);
   }
@@ -430,8 +425,8 @@ class ColorDetector {
   //   4. Pink / Red split — same hue zone, split by lightness (L threshold).
 
   ColorResult _labToColorName(double L, double rawA, double rawB) {
-    final double A      = rawA - 128.0;
-    final double B      = rawB - 128.0;
+    final double A = rawA - 128.0;
+    final double B = rawB - 128.0;
     final double chroma = sqrt(A * A + B * B);
 
     // ── 1. Neutral guard ──────────────────────────────────────────────────────
@@ -449,18 +444,14 @@ class ColorDetector {
     // Brown lives in the warm sector (red/orange hue) but is desaturated and
     // darker than orange.  Checking this first removes it from the hue buckets
     // so a dark desaturated red is never incorrectly called "red" or "orange".
-    if (h < _brownHueMax && chroma < _brownChromaMax && L < _brownLMax) {
+    if (_isBrownCandidate(h, chroma, L)) {
       return const ColorResult(colorEn: 'brown', colorAr: 'بني');
     }
 
     // ── 4. Hue bucketing ──────────────────────────────────────────────────────
     final String name;
 
-    if (h >= _hPurplePink) {
-      // [340°, 360°) — pink / red zone
-      name = L >= _pinkLMin ? 'pink' : 'red';
-    } else if (h < _hPinkRed) {
-      // [0°, 16°) — pink / red zone (wraps through 0°)
+    if (_isPinkRedHue(h)) {
       name = L >= _pinkLMin ? 'pink' : 'red';
     } else if (h < _hRedOrange) {
       // [16°, 51°)
@@ -486,5 +477,13 @@ class ColorDetector {
       colorEn: name,
       colorAr: _colorArabic[name] ?? name,
     );
+  }
+
+  bool _isBrownCandidate(double hue, double chroma, double lightness) {
+    return hue < _brownHueMax && chroma < _brownChromaMax && lightness < _brownLMax;
+  }
+
+  bool _isPinkRedHue(double hue) {
+    return hue >= _hPurplePink || hue < _hPinkRed;
   }
 }
