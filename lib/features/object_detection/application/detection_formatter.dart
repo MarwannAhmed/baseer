@@ -92,7 +92,7 @@ abstract final class DetectionFormatter {
     int maxObjects = 5,
   }) {
     if (results.isEmpty) {
-      return isArabic ? 'لا يوجد أي شيء في المشهد.' : 'No objected detected.';
+      return isArabic ? 'لا يوجد أي شيء في المشهد.' : 'No objects detected.';
     }
 
     final shown = results.take(maxObjects).toList();
