@@ -17,9 +17,9 @@ import 'package:baseer/features/color_recognition/application/color_detector.dar
 import 'package:baseer/features/analysis/domain/detected_object.dart';
 import 'package:baseer/features/object_detection/application/object_detection_service.dart';
 import 'package:baseer/features/object_detection/application/detection_formatter.dart';
-import 'package:baseer/features/object_detection/domain/detection_result.dart';
 import 'package:baseer/features/object_detection/domain/coco_labels.dart';
 import 'package:baseer/core/command_router.dart';
+import 'package:baseer/features/object_detection/domain/detection_result.dart';
 
 img.Image? _decodeImageBytes(Uint8List bytes) => img.decodeImage(bytes);
 
@@ -305,9 +305,29 @@ class _LiveCameraPageState extends State<LiveCameraPage>
         return;
       }
 
+      /*
       final results = await _objectDetector.detect(frame);
       final sentence = DetectionFormatter.toSentence(results, isArabic: true);
-
+*/
+      final objects = await _objectDetector.detectObjects(frame);
+      final sentence = DetectionFormatter.toSentence(
+        objects
+            .map(
+              (o) => DetectionResult(
+                label: o.label,
+                confidence: o.confidence,
+                boundingBox: BoundingBox(
+                  x1: o.bbox['x1']!.toDouble(),
+                  y1: o.bbox['y1']!.toDouble(),
+                  x2: o.bbox['x2']!.toDouble(),
+                  y2: o.bbox['y2']!.toDouble(),
+                ),
+              ),
+            )
+            .toList(),
+        isArabic: true,
+      );
+      setState(() => _lastDetectedObjects = objects);
       setState(() => _lastResult = sentence);
       _resultFadeController.forward();
       await TtsNarrator.instance.speak(sentence);
