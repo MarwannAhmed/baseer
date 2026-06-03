@@ -8,7 +8,6 @@ Baseer is a mobile assistant for visually impaired users. It uses the device cam
 |------|-------------|
 | **كشف** — Detect | Sends a photo to the backend, which describes the scene or objects |
 | **نص** — Text | Sends a photo to the backend for OCR and reads the result aloud |
-| **مسافة** — Distance | Sends a photo to the backend for distance estimation |
 | **لون** — Color | Runs fully on-device using a K-Means LAB color classifier — no backend needed |
 
 ### Gestures (camera screen)
@@ -40,7 +39,7 @@ The backend should expose one endpoint:
 
 ```
 POST /analyze
-  fields:  command  (e.g. "كشف", "نص", "مسافة")
+  fields:  command  (e.g. "كشف", "نص")
   files:   file     (JPEG image)
   returns: { "description": "..." }
 ```

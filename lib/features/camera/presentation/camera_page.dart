@@ -221,8 +221,6 @@ class _LiveCameraPageState extends State<LiveCameraPage>
             await _switchMode(_AppMode.color);
           } else if (command == AppCommand.readText) {
             await _switchMode(_AppMode.text);
-          } else if (command == AppCommand.estimateDistance) {
-            await _switchMode(_AppMode.distance);
           }
         } else {
           await TtsNarrator.instance.speak('لم أسمع شيئاً. حاول مجدداً.');
@@ -601,7 +599,6 @@ class _LiveCameraPageState extends State<LiveCameraPage>
 enum _AppMode {
   detect('كشف', 'وضع الكشف', 'كشف'),
   text('نص', 'وضع قراءة النص', 'نص'),
-  distance('مسافة', 'وضع قياس المسافة', 'مسافة'),
   color('لون', 'وضع كشف اللون', 'لون');
 
   const _AppMode(this.label, this.announcementAr, this.defaultCommand);
