@@ -1,4 +1,6 @@
 /// A single object returned by the FastAPI `/analyze` endpoint.
+/// colorEn and colorAr are filled in on-device by the colour pipeline
+/// after the backend returns bbox coordinates.
 class DetectedObject {
   final String label;
   final double confidence;
@@ -9,14 +11,14 @@ class DetectedObject {
   final String colorAr;
   final int distanceCm;
 
-  const DetectedObject({
+  DetectedObject({
     required this.label,
     required this.confidence,
     required this.bbox,
     required this.center,
     required this.size,
-    required this.colorEn,
-    required this.colorAr,
+    this.colorEn = '',
+    this.colorAr = '',
     required this.distanceCm,
   });
 
