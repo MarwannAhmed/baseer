@@ -75,6 +75,11 @@ class _LiveCameraPageState extends State<LiveCameraPage>
   List<DetectedObject> _lastDetectedObjects = [];
   _AppMode _activeMode = _AppMode.detect;
 
+  bool get _useBackendForDetection =>
+      dotenv.env['DETECTION_SOURCE']?.toLowerCase() == 'backend';
+  bool get _useBackendForText =>
+      dotenv.env['TEXT_SOURCE']?.toLowerCase() == 'backend';
+
   // ── Animations ──
   late AnimationController _pulseController;
   late AnimationController _scanLineController;
@@ -287,8 +292,7 @@ class _LiveCameraPageState extends State<LiveCameraPage>
     }
   }
 
-  // ─── On-device object detection ───────────────────────────────────────────
-  // ─── On-device object detection ───────────────────────────────────────────
+  // ─── Object detection (on-device or backend) ─────────────────────────────
   Future<void> _captureAndDetectObjects() async {
     if (_isProcessing) return;
     setState(() {
@@ -309,9 +313,15 @@ class _LiveCameraPageState extends State<LiveCameraPage>
         return;
       }
 
-      final objects = await _objectDetector.detectObjects(frame);
-      final coloredObjects =
-          await _colorDetector.detectColorsForObjects(frame, objects);
+      final List<DetectedObject> coloredObjects;
+      if (_useBackendForDetection) {
+        coloredObjects = await _detectObjectsFromBackend(file.path, frame);
+      } else {
+        final objects = await _objectDetector.detectObjects(frame);
+        coloredObjects =
+            await _colorDetector.detectColorsForObjects(frame, objects);
+      }
+
       setState(() => _lastDetectedObjects = coloredObjects);
       final sentence = DetectionFormatter.toSentenceFromObjects(
         coloredObjects,
@@ -321,20 +331,57 @@ class _LiveCameraPageState extends State<LiveCameraPage>
       _resultFadeController.forward();
       await TtsNarrator.instance.speak(sentence);
     } catch (e, stack) {
-      debugPrint('🔴 Detection error: $e'); // 🟢
-      debugPrint('🔴 Stack: $stack'); // 🟢
+      debugPrint('Detection error: $e');
+      debugPrint('Stack: $stack');
       await TtsNarrator.instance.speak('خطأ في الكشف');
     } finally {
       if (mounted) setState(() => _isProcessing = false);
     }
   }
 
-  // ─── Local text extraction ────────────────────────────────────────────────
+  Future<List<DetectedObject>> _detectObjectsFromBackend(
+    String imagePath,
+    img.Image frame,
+  ) async {
+    try {
+      final uri = Uri.parse('$_baseUri$_analyzeEndpoint');
+      debugPrint('Backend detect → POST $uri');
+      final request = http.MultipartRequest('POST', uri)
+        ..fields['command'] = 'كشف'
+        ..files.add(await http.MultipartFile.fromPath('file', imagePath));
+
+      final response = await request.send().timeout(
+        const Duration(seconds: 30),
+      );
+      final body = await response.stream.bytesToString();
+      debugPrint('Backend detect ← ${response.statusCode}: $body');
+
+      if (response.statusCode != 200) return [];
+
+      final json = jsonDecode(body) as Map<String, dynamic>;
+      if (json.containsKey('error')) {
+        debugPrint('Backend error: ${json['error']}');
+        return [];
+      }
+
+      final rawList = json['objects'] as List<dynamic>? ?? [];
+      final objects = rawList
+          .map((o) => DetectedObject.fromJson(o as Map<String, dynamic>))
+          .toList();
+
+      return _colorDetector.detectColorsForObjects(frame, objects);
+    } catch (e) {
+      debugPrint('Backend detect exception: $e');
+      return [];
+    }
+  }
+
+  // ─── Text extraction (on-device or backend) ──────────────────────────────
   Future<void> _captureAndExtractText() async {
     if (_isProcessing) return;
-    setState(() { 
-      _isProcessing = true; 
-      _showSilentInput = false; 
+    setState(() {
+      _isProcessing = true;
+      _showSilentInput = false;
     });
     _resultFadeController.reverse();
     HapticFeedback.heavyImpact();
@@ -343,18 +390,19 @@ class _LiveCameraPageState extends State<LiveCameraPage>
       final XFile file = await _controller!.takePicture();
       await TtsNarrator.instance.speak('جاري قراءة النص');
 
-      final bytes = await File(file.path).readAsBytes();
-      
-      // Decode the image first (exactly like color detection)
-      final frame = await compute(_decodeImageBytes, bytes);
-      if (frame == null) {
-        await TtsNarrator.instance.speak('تعذّر تحليل الصورة');
-        return;
+      final String text;
+      if (_useBackendForText) {
+        text = await _extractTextFromBackend(file.path);
+      } else {
+        final bytes = await File(file.path).readAsBytes();
+        final frame = await compute(_decodeImageBytes, bytes);
+        if (frame == null) {
+          await TtsNarrator.instance.speak('تعذّر تحليل الصورة');
+          return;
+        }
+        text = await TextExtractor.extractText(frame);
       }
 
-      // Pass the decoded image directly to extractText
-      final text = await TextExtractor.extractText(frame);
-      
       if (text.isEmpty) {
         await TtsNarrator.instance.speak('لم يتم العثور على نص');
         setState(() => _lastResult = 'لم يتم العثور على نص');
@@ -364,10 +412,38 @@ class _LiveCameraPageState extends State<LiveCameraPage>
         await TtsNarrator.instance.speak(text);
       }
     } catch (e) {
-      print('OCR Error: $e');
+      debugPrint('OCR error: $e');
       await TtsNarrator.instance.speak('حدث خطأ في قراءة النص');
     } finally {
       if (mounted) setState(() => _isProcessing = false);
+    }
+  }
+
+  Future<String> _extractTextFromBackend(String imagePath) async {
+    try {
+      final uri = Uri.parse('$_baseUri$_analyzeEndpoint');
+      debugPrint('Backend text → POST $uri');
+      final request = http.MultipartRequest('POST', uri)
+        ..fields['command'] = 'نص'
+        ..files.add(await http.MultipartFile.fromPath('file', imagePath));
+
+      final response = await request.send().timeout(
+        const Duration(seconds: 30),
+      );
+      final body = await response.stream.bytesToString();
+      debugPrint('Backend text ← ${response.statusCode}: $body');
+
+      if (response.statusCode != 200) return '';
+
+      final json = jsonDecode(body) as Map<String, dynamic>;
+      if (json.containsKey('error')) {
+        debugPrint('Backend error: ${json['error']}');
+        return '';
+      }
+      return json['description'] as String? ?? '';
+    } catch (e) {
+      debugPrint('Backend text exception: $e');
+      return '';
     }
   }
 
