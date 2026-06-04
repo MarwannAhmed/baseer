@@ -19,6 +19,7 @@ import 'package:baseer/features/object_detection/application/object_detection_se
 import 'package:baseer/features/object_detection/application/detection_formatter.dart';
 import 'package:baseer/features/object_detection/domain/coco_labels.dart';
 import 'package:baseer/core/command_router.dart';
+import 'package:baseer/features/text_extraction/application/text_extractor.dart';
 
 img.Image? _decodeImageBytes(Uint8List bytes) => img.decodeImage(bytes);
 
@@ -151,6 +152,8 @@ class _LiveCameraPageState extends State<LiveCameraPage>
     _sttLocale = locales.any((l) => l.localeId == 'ar_EG') ? 'ar_EG' : 'ar';
 
     await TtsNarrator.instance.init();
+  
+    await TextExtractor.initialize();
 
     if (!mounted) return;
     await TtsNarrator.instance.speak('بصير جاهز.');
@@ -243,6 +246,8 @@ class _LiveCameraPageState extends State<LiveCameraPage>
       await _captureAndDetectColor();
     } else if (_activeMode == _AppMode.detect) {
       await _captureAndDetectObjects();
+    } else if (_activeMode == _AppMode.text) {
+    await _captureAndExtractText();
     } else {
       await _captureAndSend();
     }
@@ -319,6 +324,48 @@ class _LiveCameraPageState extends State<LiveCameraPage>
       debugPrint('🔴 Detection error: $e'); // 🟢
       debugPrint('🔴 Stack: $stack'); // 🟢
       await TtsNarrator.instance.speak('خطأ في الكشف');
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
+    }
+  }
+
+  // ─── Local text extraction ────────────────────────────────────────────────
+  Future<void> _captureAndExtractText() async {
+    if (_isProcessing) return;
+    setState(() { 
+      _isProcessing = true; 
+      _showSilentInput = false; 
+    });
+    _resultFadeController.reverse();
+    HapticFeedback.heavyImpact();
+
+    try {
+      final XFile file = await _controller!.takePicture();
+      await TtsNarrator.instance.speak('جاري قراءة النص');
+
+      final bytes = await File(file.path).readAsBytes();
+      
+      // Decode the image first (exactly like color detection)
+      final frame = await compute(_decodeImageBytes, bytes);
+      if (frame == null) {
+        await TtsNarrator.instance.speak('تعذّر تحليل الصورة');
+        return;
+      }
+
+      // Pass the decoded image directly to extractText
+      final text = await TextExtractor.extractText(frame);
+      
+      if (text.isEmpty) {
+        await TtsNarrator.instance.speak('لم يتم العثور على نص');
+        setState(() => _lastResult = 'لم يتم العثور على نص');
+      } else {
+        setState(() => _lastResult = text);
+        _resultFadeController.forward();
+        await TtsNarrator.instance.speak(text);
+      }
+    } catch (e) {
+      print('OCR Error: $e');
+      await TtsNarrator.instance.speak('حدث خطأ في قراءة النص');
     } finally {
       if (mounted) setState(() => _isProcessing = false);
     }

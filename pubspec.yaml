@@ -39,6 +39,7 @@ dependencies:
   image: ^4.8.0
   permission_handler: ^11.3.1
   onnxruntime: ^1.4.1
+  path_provider: ^2.1.0
 
 dev_dependencies:
   flutter_test:
@@ -65,6 +66,9 @@ flutter:
   assets:
     - .env
     - assets/ml/
+    - assets/models/det.onnx
+    - assets/models/rec.onnx
+    - assets/dict/ppocr_keys.txt
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
