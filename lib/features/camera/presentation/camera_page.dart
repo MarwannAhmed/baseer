@@ -54,11 +54,18 @@ class _LiveCameraPageState extends State<LiveCameraPage>
   final SpeechToText _speech = SpeechToText();
   final ColorDetector _colorDetector = ColorDetector();
 
+  // on-device object detection
+  /*
   final ObjectDetectionService _objectDetector =
       ObjectDetectionService.onDevice(
         classNames: cocoClassNames,
         modelAssetPath: 'assets/ml/yolov8n_int8.onnx',
       );
+*/
+  // remote object detection
+  final ObjectDetectionService _objectDetector = ObjectDetectionService.remote(
+    baseUrl: dotenv.env['BASE_URI'] ?? 'http://127.0.0.1:8000',
+  );
 
   // ── Silent input / mode overlay ──
   bool _showSilentInput = false;
@@ -128,7 +135,14 @@ class _LiveCameraPageState extends State<LiveCameraPage>
     );
     await _controller!.initialize();
 
-    await _objectDetector.init();
+    debugPrint('🟡 Camera ready, about to init model');
+    try {
+      await _objectDetector.init();
+      debugPrint('🟢 Model loaded OK');
+    } catch (e) {
+      debugPrint('🔴 Model init FAILED: $e');
+    }
+    debugPrint('🟡 Model init done'); // ADD THIS
 
     // Show camera preview immediately — don't wait for speech services.
     if (!mounted) return;
@@ -290,6 +304,7 @@ class _LiveCameraPageState extends State<LiveCameraPage>
 
   // ─── On-device object detection ───────────────────────────────────────────
   Future<void> _captureAndDetectObjects() async {
+    debugPrint('🟡 _captureAndDetectObjects called');
     if (_isProcessing) return;
     setState(() {
       _isProcessing = true;

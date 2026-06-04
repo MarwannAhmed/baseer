@@ -23,9 +23,7 @@ import 'package:baseer/features/analysis/domain/detected_object.dart';
 import '../domain/detection_result.dart';
 import '../domain/object_detector.dart';
 import 'on_device_object_detector.dart';
-
-// ── Future import (uncomment when backend is ready) ───────────────────────────
-// import 'remote_object_detector.dart';
+import 'remote_object_detector.dart';
 
 class ObjectDetectionService {
   final ObjectDetector _detector;
@@ -56,11 +54,9 @@ class ObjectDetectionService {
     );
   }
 
-  // ── Future factory (uncomment when backend is ready) ──────────────────────
-  //
-  // factory ObjectDetectionService.remote({required String baseUrl}) {
-  //   return ObjectDetectionService._(RemoteObjectDetector(baseUrl: baseUrl));
-  // }
+  factory ObjectDetectionService.remote({required String baseUrl}) {
+    return ObjectDetectionService._(RemoteObjectDetector(baseUrl: baseUrl));
+  }
 
   // ── Public API ─────────────────────────────────────────────────────────────
 
