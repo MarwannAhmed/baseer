@@ -120,12 +120,9 @@ abstract final class DetectionFormatter {
     }
 
     final shown = objects.take(maxObjects).toList();
-
-    if (isArabic) {
-      return _buildArabicObjects(shown);
-    } else {
-      return _buildEnglishObjects(shown);
-    }
+    return isArabic
+        ? _buildArabicObjects(shown)
+        : _buildEnglishObjects(shown);
   }
 
   // ── English ────────────────────────────────────────────────────────────────
@@ -159,38 +156,33 @@ abstract final class DetectionFormatter {
     return 'أرى ${parts.join('، ')}، و$last.';
   }
 
+  // ── DetectedObject overloads (includes colour + distance) ──────────────────
   static String _buildEnglishObjects(List<DetectedObject> objects) {
-    final parts = objects.map((o) {
-      final b = o.bbox;
-      final distance = o.distanceCm > 0
-          ? ' at distance ${o.distanceCm} cm'
-          : '';
-      final percent = (o.confidence * 100).round();
-      return 'a ${o.label} with $percent% confidence '
-          'at position ${b['x1'] ?? 0}, ${b['y1'] ?? 0} '
-          'to ${b['x2'] ?? 0}, ${b['y2'] ?? 0}$distance';
-    }).toList();
+      final parts = objects.map((o) {
+      final color = o.colorEn.isNotEmpty ? '${o.colorEn} ' : '';
+        final distance = o.distanceCm > 0
+            ? ' at distance ${o.distanceCm} cm'
+            : '';
+      return 'a $color${o.label}$distance';
+      }).toList();
 
-    if (parts.length == 1) return 'I see ${parts[0]}.';
-    final last = parts.removeLast();
-    return 'I see ${parts.join(', ')}, and $last.';
-  }
+      if (parts.length == 1) return 'I see ${parts[0]}.';
+      final last = parts.removeLast();
+      return 'I see ${parts.join(', ')}, and $last.';
+    }
 
-  static String _buildArabicObjects(List<DetectedObject> objects) {
-    final parts = objects.map((o) {
-      final name = _cocoArabic[o.label] ?? o.label;
-      final b = o.bbox;
-      final distance = o.distanceCm > 0
-          ? ' على بعد ${o.distanceCm} سم'
-          : '';
-      final percent = (o.confidence * 100).round();
-      return '$name بثقة $percent% '
-          'في الموضع ${b['x1'] ?? 0}، ${b['y1'] ?? 0} '
-          'إلى ${b['x2'] ?? 0}، ${b['y2'] ?? 0}$distance';
-    }).toList();
+    static String _buildArabicObjects(List<DetectedObject> objects) {
+      final parts = objects.map((o) {
+        final name = _cocoArabic[o.label] ?? o.label;
+        final color = o.colorAr.isNotEmpty ? ' ${o.colorAr}' : '';
+        final distance = o.distanceCm > 0
+            ? ' على بعد ${o.distanceCm} سم'
+            : '';
+        return '$name$color$distance';
+      }).toList();
 
-    if (parts.length == 1) return 'أرى ${parts[0]}.';
-    final last = parts.removeLast();
-    return 'أرى ${parts.join('، ')}، و$last.';
-  }
+      if (parts.length == 1) return 'أرى ${parts[0]}.';
+      final last = parts.removeLast();
+      return 'أرى ${parts.join('، ')}، و$last.';
+    }
 }

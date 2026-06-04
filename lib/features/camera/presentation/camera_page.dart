@@ -12,15 +12,14 @@ import 'package:image/image.dart' as img;
 import 'package:speech_to_text/speech_to_text.dart';
 
 import 'package:baseer/core/services/tts_narrator.dart';
-import 'package:baseer/features/color_recognition/application/color_detector.dart';
-import 'package:baseer/features/text_extraction/application/text_extractor.dart';
+import 'package:baseer/features/color_recognition/application/color_detector_factory.dart';
 
-import 'package:baseer/features/analysis/domain/detected_object.dart';
 import 'package:baseer/features/distance_estimation/application/distance_estimation_service.dart';
 import 'package:baseer/features/object_detection/application/object_detection_service.dart';
 import 'package:baseer/features/object_detection/application/detection_formatter.dart';
 import 'package:baseer/features/object_detection/domain/coco_labels.dart';
 import 'package:baseer/core/command_router.dart';
+import 'package:baseer/features/text_extraction/application/text_extraction_service.dart';
 
 img.Image? _decodeImageBytes(Uint8List bytes) => img.decodeImage(bytes);
 
@@ -46,22 +45,39 @@ class _LiveCameraPageState extends State<LiveCameraPage>
   // ── Backend ──
   static const String _analyzeEndpoint = '/analyze';
   String get _baseUri =>
-      dotenv.env['BASE_URI']?.trim() ?? 'http://127.0.0.1:8000';
+      dotenv.env['BASE_URI']?.trim() ?? 'http://192.168.1.22:8000';
 
   // ── Camera / speech ──
   CameraController? _controller;
   late List<CameraDescription> _cameras;
   final SpeechToText _speech = SpeechToText();
-  final ColorDetector _colorDetector = ColorDetector();
+  // Controlled by COLOR_SOURCE in .env: 'svm' | 'rulebased'
+  final ColorDetectorFactory _colorDetector = ColorDetectorFactory(
+    mode: dotenv.env['COLOR_SOURCE']?.toLowerCase() == 'svm'
+        ? ColorDetectorMode.svm
+        : ColorDetectorMode.ruleBased,
+  );
 
+  // Controlled by TEXT_SOURCE in .env: 'remote' | 'ondevice'
+  final TextExtractionService _textExtractor =
+      (dotenv.env['TEXT_SOURCE']?.toLowerCase() == 'remote')
+          ? TextExtractionService.remote(
+              baseUrl: dotenv.env['BASE_URI'] ?? 'http://192.168.1.22:8000',
+            )
+          : TextExtractionService.onDevice();
+
+  // Controlled by DETECTION_SOURCE in .env: 'remote' | 'ondevice'
   final ObjectDetectionService _objectDetector =
-      ObjectDetectionService.onDevice(
-        classNames: cocoClassNames,
-        modelAssetPath: 'assets/ml/yolov8n_int8.onnx',
-      );
-  final DistanceEstimationService _distanceEstimator =
+      (dotenv.env['DETECTION_SOURCE']?.toLowerCase() == 'remote')
+          ? ObjectDetectionService.remote(
+              baseUrl: dotenv.env['BASE_URI'] ?? 'http://192.168.1.22:8000',
+            )
+          : ObjectDetectionService.onDevice(
+              classNames: cocoClassNames,
+              modelAssetPath: 'assets/ml/yolov8n_int8.onnx',
+            );
+    final DistanceEstimationService _distanceEstimator =
       DistanceEstimationService.fromEnv();
-
   // ── Silent input / mode overlay ──
   bool _showSilentInput = false;
   final TextEditingController _silentInputCtrl = TextEditingController();
@@ -75,8 +91,8 @@ class _LiveCameraPageState extends State<LiveCameraPage>
   String _lastCommand = 'كشف';
   String _sttLocale = 'ar_EG';
   String _lastResult = '';
-  List<DetectedObject> _lastDetectedObjects = [];
   _AppMode _activeMode = _AppMode.detect;
+
 
   // ── Animations ──
   late AnimationController _pulseController;
@@ -130,7 +146,14 @@ class _LiveCameraPageState extends State<LiveCameraPage>
     );
     await _controller!.initialize();
 
-    await _objectDetector.init();
+    debugPrint('🟡 Camera ready, about to init model');
+    try {
+      await _objectDetector.init();
+      debugPrint('🟢 Model loaded OK');
+    } catch (e) {
+      debugPrint('🔴 Model init FAILED: $e');
+    }
+    debugPrint('🟡 Model init done'); // ADD THIS
 
     // Show camera preview immediately — don't wait for speech services.
     if (!mounted) return;
@@ -156,7 +179,7 @@ class _LiveCameraPageState extends State<LiveCameraPage>
 
     await TtsNarrator.instance.init();
 
-    await TextExtractor.initialize();
+    await _textExtractor.init();
 
     if (!mounted) return;
     await TtsNarrator.instance.speak('بصير جاهز.');
@@ -248,7 +271,7 @@ class _LiveCameraPageState extends State<LiveCameraPage>
     } else if (_activeMode == _AppMode.detect) {
       await _captureAndDetectObjects();
     } else if (_activeMode == _AppMode.text) {
-      await _captureAndExtractText();
+    await _captureAndExtractText();
     } else {
       await _captureAndSend();
     }
@@ -288,8 +311,9 @@ class _LiveCameraPageState extends State<LiveCameraPage>
     }
   }
 
-  // ─── On-device object detection ───────────────────────────────────────────
+  // ─── Object detection ────────────────────────────────────────────────────
   Future<void> _captureAndDetectObjects() async {
+    debugPrint('🟡 _captureAndDetectObjects called');
     if (_isProcessing) return;
     setState(() {
       _isProcessing = true;
@@ -308,36 +332,40 @@ class _LiveCameraPageState extends State<LiveCameraPage>
         await TtsNarrator.instance.speak('تعذّر تحليل الصورة');
         return;
       }
-
-      /*
-      final results = await _objectDetector.detect(frame);
-      final sentence = DetectionFormatter.toSentence(results, isArabic: true);
-*/
+    
       final objects = await _objectDetector.detectObjects(frame);
+
+      for (final o in objects) {
+        debugPrint('📦 ${o.label} | bbox=${o.bbox} | confidence=${o.confidence.toStringAsFixed(2)}');
+      }
+
+      final coloredObjects =
+          await _colorDetector.detectColorsForObjects(frame, objects);
+      
       final objectsWithDistance = await _distanceEstimator.estimateForObjects(
-        objects: objects,
+        objects: coloredObjects,
         imageWidth: frame.width,
         imageHeight: frame.height,
         frame: frame,
       );
+
       final sentence = DetectionFormatter.toSentenceFromObjects(
         objectsWithDistance,
         isArabic: true,
       );
-      setState(() => _lastDetectedObjects = objectsWithDistance);
       setState(() => _lastResult = sentence);
       _resultFadeController.forward();
       await TtsNarrator.instance.speak(sentence);
     } catch (e, stack) {
-      debugPrint('🔴 Detection error: $e'); // 🟢
-      debugPrint('🔴 Stack: $stack'); // 🟢
+      debugPrint('Detection error: $e');
+      debugPrint('Stack: $stack');
       await TtsNarrator.instance.speak('خطأ في الكشف');
     } finally {
       if (mounted) setState(() => _isProcessing = false);
     }
   }
 
-  // ─── Local text extraction ────────────────────────────────────────────────
+  // ─── Text extraction (on-device or backend) ───────────────────────────────
   Future<void> _captureAndExtractText() async {
     if (_isProcessing) return;
     setState(() {
@@ -352,16 +380,12 @@ class _LiveCameraPageState extends State<LiveCameraPage>
       await TtsNarrator.instance.speak('جاري قراءة النص');
 
       final bytes = await File(file.path).readAsBytes();
-
-      // Decode the image first (exactly like color detection)
       final frame = await compute(_decodeImageBytes, bytes);
       if (frame == null) {
         await TtsNarrator.instance.speak('تعذّر تحليل الصورة');
         return;
       }
-
-      // Pass the decoded image directly to extractText
-      final text = await TextExtractor.extractText(frame);
+      final String text = await _textExtractor.extractText(frame);
 
       if (text.isEmpty) {
         await TtsNarrator.instance.speak('لم يتم العثور على نص');
@@ -372,12 +396,13 @@ class _LiveCameraPageState extends State<LiveCameraPage>
         await TtsNarrator.instance.speak(text);
       }
     } catch (e) {
-      print('OCR Error: $e');
+      debugPrint('OCR error: $e');
       await TtsNarrator.instance.speak('حدث خطأ في قراءة النص');
     } finally {
       if (mounted) setState(() => _isProcessing = false);
     }
   }
+
 
   // ─── Capture ─────────────────────────────────────────────────────────────
   Future<void> _captureAndSend() async {
@@ -702,14 +727,12 @@ class _CameraBackground extends StatelessWidget {
 class _VignetteOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return const Positioned.fill(
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: RadialGradient(
-            center: Alignment.center,
-            radius: 1.2,
-            colors: [Colors.transparent, Color(0xAA000000)],
-          ),
+    return const DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: RadialGradient(
+          center: Alignment.center,
+          radius: 1.2,
+          colors: [Colors.transparent, Color(0xAA000000)],
         ),
       ),
     );

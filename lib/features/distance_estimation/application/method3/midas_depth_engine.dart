@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import 'package:tflite_flutter/tflite_flutter.dart';
@@ -30,7 +28,6 @@ class MidasDepthEngine {
   Interpreter? _interpreter;
   int? _outputWidth;
   int? _outputHeight;
-  List<int>? _outputShape;
   TensorType? _inputType;
   TensorType? _outputType;
   double _inputScale = 1.0;
@@ -64,7 +61,6 @@ class MidasDepthEngine {
     debugPrint('[MiDaS] Output shape: $outputShape');
     debugPrint('[MiDaS] Output type: $_outputType scale=$_outputScale zp=$_outputZeroPoint');
     _resolveOutputSize(outputShape);
-    _outputShape = outputShape;
   }
 
   void _resolveOutputSize(List<int> shape) {
@@ -112,8 +108,6 @@ class MidasDepthEngine {
     _interpreter!.run(input, outputRaw);
 
     final output = _dequantizeOutput(outputRaw, outputLength);
-
-    debugPrint('[MiDaS] Depth map ready: ${outputWidth}x${outputHeight}');
 
     return DepthMap(width: outputWidth, height: outputHeight, data: output);
   }

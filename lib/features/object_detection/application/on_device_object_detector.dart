@@ -16,7 +16,6 @@
 // If your model uses a different layout (YOLOv5 / custom), see the NOTE in
 // _postprocess() and adjust accordingly.
 
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
@@ -82,27 +81,27 @@ class OnDeviceObjectDetector implements ObjectDetector {
       ),
     );
 
-debugPrint('🔵 Preprocess done'); // 🟢
+    debugPrint('🔵 Preprocess done'); // 🟢
     // ── 2. Build input tensor ─────────────────────────────────────────────────
     final inputTensor = OrtValueTensor.createTensorWithDataList(
       preprocessed.data,
       [1, 3, inputSize, inputSize],
     );
 
-debugPrint('🔵 Tensor created'); // 🟢
+    debugPrint('🔵 Tensor created'); // 🟢
     // ── 3. Run inference ──────────────────────────────────────────────────────
     // Use the session's reported input name so the code survives model renames.
     final inputs = {_session!.inputNames[0]: inputTensor};
     final runOptions = OrtRunOptions();
     final outputs = await _session!.runAsync(runOptions, inputs);
-debugPrint('🔵 Inference done, outputs: ${outputs?.length}'); // 🟢
+    debugPrint('🔵 Inference done, outputs: ${outputs?.length}'); // 🟢
     inputTensor.release();
     runOptions.release();
 
     if (outputs == null || outputs.isEmpty || outputs[0] == null) {
-  debugPrint('🔴 Outputs null or empty'); // 🟢
-  return [];
-}
+      debugPrint('🔴 Outputs null or empty'); // 🟢
+      return [];
+    }
 
     // ── 4. Postprocess ────────────────────────────────────────────────────────
     // outputs[0].value → List<List<List<double>>> shaped [1][4+nc][8400]
@@ -117,8 +116,10 @@ debugPrint('🔵 Inference done, outputs: ${outputs?.length}'); // 🟢
       preprocessed.padTop,
     );
 
-debugPrint('🟢 Detection complete, found ${results.length} objects'); // 🟢
-    for (final o in outputs) { o?.release(); }
+    debugPrint('🟢 Detection complete, found ${results.length} objects'); // 🟢
+    for (final o in outputs) {
+      o?.release();
+    }
 
     return results;
   }
@@ -149,7 +150,7 @@ debugPrint('🟢 Detection complete, found ${results.length} objects'); // 🟢
     //   instead of predictions[row][anchorIdx], use predictions[anchorIdx][row].
 
     final List predictions = rawOutput[0] as List; // [4+nc][8400]
-    final int numRows    = predictions.length;
+    final int numRows = predictions.length;
     final int numAnchors = (predictions[0] as List).length;
     final int numClasses = numRows - 4;
 
@@ -158,11 +159,11 @@ debugPrint('🟢 Detection complete, found ${results.length} objects'); // 🟢
     for (int i = 0; i < numAnchors; i++) {
       // ── Find highest-confidence class for this anchor ──────────────────────
       double maxScore = 0.0;
-      int bestClass   = 0;
+      int bestClass = 0;
       for (int c = 0; c < numClasses; c++) {
         final double score = (predictions[4 + c] as List)[i].toDouble();
         if (score > maxScore) {
-          maxScore  = score;
+          maxScore = score;
           bestClass = c;
         }
       }
@@ -172,20 +173,37 @@ debugPrint('🟢 Detection complete, found ${results.length} objects'); // 🟢
       // ── Decode box from input-tensor pixel space → original-image pixels ───
       final double cx = (predictions[0] as List)[i].toDouble();
       final double cy = (predictions[1] as List)[i].toDouble();
-      final double w  = (predictions[2] as List)[i].toDouble();
-      final double h  = (predictions[3] as List)[i].toDouble();
+      final double w = (predictions[2] as List)[i].toDouble();
+      final double h = (predictions[3] as List)[i].toDouble();
 
       // Undo letterboxing: subtract padding, then undo scale
-      final double x1 = ((cx - w / 2 - padLeft) / scale).clamp(0.0, origW.toDouble());
-      final double y1 = ((cy - h / 2 - padTop)  / scale).clamp(0.0, origH.toDouble());
-      final double x2 = ((cx + w / 2 - padLeft) / scale).clamp(0.0, origW.toDouble());
-      final double y2 = ((cy + h / 2 - padTop)  / scale).clamp(0.0, origH.toDouble());
+      final double x1 = ((cx - w / 2 - padLeft) / scale).clamp(
+        0.0,
+        origW.toDouble(),
+      );
+      final double y1 = ((cy - h / 2 - padTop) / scale).clamp(
+        0.0,
+        origH.toDouble(),
+      );
+      final double x2 = ((cx + w / 2 - padLeft) / scale).clamp(
+        0.0,
+        origW.toDouble(),
+      );
+      final double y2 = ((cy + h / 2 - padTop) / scale).clamp(
+        0.0,
+        origH.toDouble(),
+      );
 
-      candidates.add(_RawDetection(
-        x1: x1, y1: y1, x2: x2, y2: y2,
-        score: maxScore,
-        classIndex: bestClass,
-      ));
+      candidates.add(
+        _RawDetection(
+          x1: x1,
+          y1: y1,
+          x2: x2,
+          y2: y2,
+          score: maxScore,
+          classIndex: bestClass,
+        ),
+      );
     }
 
     // ── NMS per class ──────────────────────────────────────────────────────────
@@ -201,13 +219,13 @@ debugPrint('🟢 Detection complete, found ${results.length} objects'); // 🟢
         final String label = entry.key < classNames.length
             ? classNames[entry.key]
             : 'class_${entry.key}';
-        results.add(DetectionResult(
-          label: label,
-          confidence: d.score,
-          boundingBox: BoundingBox(
-            x1: d.x1, y1: d.y1, x2: d.x2, y2: d.y2,
+        results.add(
+          DetectionResult(
+            label: label,
+            confidence: d.score,
+            boundingBox: BoundingBox(x1: d.x1, y1: d.y1, x2: d.x2, y2: d.y2),
           ),
-        ));
+        );
       }
     }
 
@@ -221,7 +239,7 @@ debugPrint('🟢 Detection complete, found ${results.length} objects'); // 🟢
   List<_RawDetection> _nms(List<_RawDetection> dets) {
     dets.sort((a, b) => b.score.compareTo(a.score));
     final suppressed = List.filled(dets.length, false);
-    final kept       = <_RawDetection>[];
+    final kept = <_RawDetection>[];
 
     for (int i = 0; i < dets.length; i++) {
       if (suppressed[i]) continue;
@@ -239,11 +257,12 @@ debugPrint('🟢 Detection complete, found ${results.length} objects'); // 🟢
     final double iy1 = a.y1 > b.y1 ? a.y1 : b.y1;
     final double ix2 = a.x2 < b.x2 ? a.x2 : b.x2;
     final double iy2 = a.y2 < b.y2 ? a.y2 : b.y2;
-    final double iw  = ix2 - ix1;
-    final double ih  = iy2 - iy1;
+    final double iw = ix2 - ix1;
+    final double ih = iy2 - iy1;
     if (iw <= 0 || ih <= 0) return 0.0;
     final double inter = iw * ih;
-    final double union = (a.x2-a.x1)*(a.y2-a.y1) + (b.x2-b.x1)*(b.y2-b.y1) - inter;
+    final double union =
+        (a.x2 - a.x1) * (a.y2 - a.y1) + (b.x2 - b.x1) * (b.y2 - b.y1) - inter;
     return inter / union;
   }
 }
@@ -254,8 +273,10 @@ class _RawDetection {
   final double x1, y1, x2, y2, score;
   final int classIndex;
   const _RawDetection({
-    required this.x1, required this.y1,
-    required this.x2, required this.y2,
+    required this.x1,
+    required this.y1,
+    required this.x2,
+    required this.y2,
     required this.score,
     required this.classIndex,
   });
@@ -281,10 +302,10 @@ class _PreprocessInput {
 }
 
 class _PreprocessOutput {
-  final Float32List data;  // CHW float32 ready for ONNX
-  final double scale;      // uniform scale applied to the image
-  final int padLeft;       // horizontal padding added (pixels)
-  final int padTop;        // vertical   padding added (pixels)
+  final Float32List data; // CHW float32 ready for ONNX
+  final double scale; // uniform scale applied to the image
+  final int padLeft; // horizontal padding added (pixels)
+  final int padTop; // vertical   padding added (pixels)
   const _PreprocessOutput({
     required this.data,
     required this.scale,
@@ -294,21 +315,21 @@ class _PreprocessOutput {
 }
 
 _PreprocessOutput _preprocessIsolate(_PreprocessInput input) {
-  final int size  = input.inputSize;
+  final int size = input.inputSize;
   final int origW = input.originalWidth;
   final int origH = input.originalHeight;
   final Uint8List src = input.rgbaBytes;
 
   // ── Letterbox geometry ────────────────────────────────────────────────────
   final double scale = size / (origW > origH ? origW : origH);
-  final int newW   = (origW * scale).round();
-  final int newH   = (origH * scale).round();
+  final int newW = (origW * scale).round();
+  final int newH = (origH * scale).round();
   final int padLeft = (size - newW) ~/ 2;
-  final int padTop  = (size - newH) ~/ 2;
+  final int padTop = (size - newH) ~/ 2;
 
   // ── Allocate output tensor, pre-fill with 0.5 (gray letterbox border) ─────
   final Float32List output = Float32List(3 * size * size);
-  for (int i = 0; i < output.length; i++) output[i] = 0.5;
+  for (int i = 0; i < output.length; i++) {output[i] = 0.5;}
 
   // ── Bilinear resize + normalize + CHW layout ──────────────────────────────
   for (int py = 0; py < newH; py++) {
@@ -335,7 +356,7 @@ _PreprocessOutput _preprocessIsolate(_PreprocessInput input) {
             (src[i00 + c] * (1 - fx) + src[i01 + c] * fx) * (1 - fy) +
             (src[i10 + c] * (1 - fx) + src[i11 + c] * fx) * fy;
 
-        final int destY = padTop  + py;
+        final int destY = padTop + py;
         final int destX = padLeft + px;
         // CHW index: channel * (H*W) + row * W + col
         output[c * size * size + destY * size + destX] = v / 255.0;

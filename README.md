@@ -6,9 +6,10 @@ Baseer is a mobile assistant for visually impaired users. It uses the device cam
 
 | Mode | How it works |
 |------|-------------|
-| **كشف** — Detect | Sends a photo to the backend, which describes the scene or objects |
-| **نص** — Text | Sends a photo to the backend for OCR and reads the result aloud |
-| **لون** — Color | Runs fully on-device using a K-Means LAB color classifier — no backend needed |
+| **كشف** — Detect | Object detection — on-device ONNX (YOLOv8) or backend, configurable via `.env`. Colour of each detected object is always added on-device. |
+| **نص** — Text | OCR — on-device ONNX model or backend, configurable via `.env` |
+| **مسافة** — Distance | Sends a photo to the backend for distance estimation |
+| **لون** — Color | Always on-device — K-Means LAB colour classifier, no backend needed |
 
 ### Gestures (camera screen)
 - **Double tap** anywhere → activate voice command (STT)
@@ -29,22 +30,20 @@ Baseer is a mobile assistant for visually impaired users. It uses the device cam
 
 ## Backend
 
-The app talks to a Python backend. Set the base URL in `.env`:
-
-```env
-BASE_URI=http://192.168.x.x:8000
-```
-
-The backend should expose one endpoint:
+The app talks to a Python FastAPI backend via one endpoint:
 
 ```
 POST /analyze
-  fields:  command  (e.g. "كشف", "نص")
-  files:   file     (JPEG image)
-  returns: { "description": "..." }
+  fields:  command  — "كشف" | "نص" | "مسافة"
+  files:   file     — JPEG image
+
+Response (كشف):   { "objects": [ { "label": "...", "confidence": 0.9, "bbox": { "x1": 0, "y1": 0, "x2": 100, "y2": 100 } } ] }
+Response (نص):    { "description": "النص المستخرج" }
+Response (مسافة): { "description": "..." }
+Response (error): { "error": "رسالة الخطأ" }
 ```
 
-Color detection (`لون` mode) is handled entirely on-device and never hits the backend.
+Colour detection (`لون` mode) is always on-device and never hits the backend.
 
 ## Getting Started
 
@@ -64,7 +63,21 @@ flutter pub get
 Create a `.env` file in the project root:
 
 ```env
+# URL of the FastAPI backend
+# Android emulator → http://10.0.2.2:8000
+# Real device      → http://<your-machine-LAN-ip>:8000
+# Desktop          → http://127.0.0.1:8000
 BASE_URI=http://127.0.0.1:8000
+
+# Inference source for object detection (كشف mode)
+# ondevice → on-device YOLOv8 ONNX model
+# backend  → POST /analyze with command "كشف"
+DETECTION_SOURCE=ondevice
+
+# Inference source for text extraction (نص mode)
+# ondevice → on-device OCR ONNX model
+# backend  → POST /analyze with command "نص"
+TEXT_SOURCE=ondevice
 ```
 
 ### Run
