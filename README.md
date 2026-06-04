@@ -8,7 +8,6 @@ Baseer is a mobile assistant for visually impaired users. It uses the device cam
 |------|-------------|
 | **كشف** — Detect | Object detection — on-device ONNX (YOLOv8) or backend, configurable via `.env`. Colour of each detected object is always added on-device. |
 | **نص** — Text | OCR — on-device ONNX model or backend, configurable via `.env` |
-| **مسافة** — Distance | Sends a photo to the backend for distance estimation |
 | **لون** — Color | Always on-device — K-Means LAB colour classifier, no backend needed |
 
 ### Gestures (camera screen)
@@ -34,12 +33,11 @@ The app talks to a Python FastAPI backend via one endpoint:
 
 ```
 POST /analyze
-  fields:  command  — "كشف" | "نص" | "مسافة"
+  fields:  command  — "كشف" | "نص"
   files:   file     — JPEG image
 
 Response (كشف):   { "objects": [ { "label": "...", "confidence": 0.9, "bbox": { "x1": 0, "y1": 0, "x2": 100, "y2": 100 } } ] }
 Response (نص):    { "description": "النص المستخرج" }
-Response (مسافة): { "description": "..." }
 Response (error): { "error": "رسالة الخطأ" }
 ```
 
@@ -78,6 +76,15 @@ DETECTION_SOURCE=ondevice
 # ondevice → on-device OCR ONNX model
 # backend  → POST /analyze with command "نص"
 TEXT_SOURCE=ondevice
+
+# 'svm' → SVM-based color detection  |  'rulebased' → rule-based (default)
+COLOR_SOURCE=rulebased
+
+# Distance estimation method
+# 1 → Pinhole Prior
+# 2 → Ground-Plan Projection
+# 3 → Scaled MiDaS Depth
+DISTANCE=1
 ```
 
 ### Run
