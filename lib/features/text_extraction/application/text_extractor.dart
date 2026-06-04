@@ -37,13 +37,17 @@ class TextExtractor {
   static const List<double> _detMean = [0.485, 0.456, 0.406];
   static const List<double> _detStd  = [0.229, 0.224, 0.225];
 
-  static Future<void> initialize() async {
+  static Future<void> initialize({
+    String detModelPath = 'assets/models/det.onnx',
+    String recModelPath = 'assets/models/rec.onnx',
+    String dictPath     = 'assets/dict/ppocr_keys.txt',
+  }) async {
     if (_isInitialized) return;
     OrtEnv.instance.init();
 
-    final detBytes  = await _loadAsset('assets/models/det.onnx');
-    final recBytes  = await _loadAsset('assets/models/rec.onnx');
-    final dictBytes = await _loadAsset('assets/dict/ppocr_keys.txt');
+    final detBytes  = await _loadAsset(detModelPath);
+    final recBytes  = await _loadAsset(recModelPath);
+    final dictBytes = await _loadAsset(dictPath);
 
     _detSession = OrtSession.fromBuffer(detBytes, OrtSessionOptions());
     _recSession = OrtSession.fromBuffer(recBytes, OrtSessionOptions());

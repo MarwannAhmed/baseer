@@ -10,15 +10,13 @@ enum ColorDetectorMode {
 }
 
 class ColorDetectorFactory {
-  // change before (or after) app start. switching at runtime is fine
-  // defaults to ruleBased so the app works w/o any onnx assets
-  static ColorDetectorMode mode = ColorDetectorMode.ruleBased;
+  final ColorDetectorMode mode;
 
   // both held so we dont reinit on every mode switch
   final ColorDetector    _ruleBased = ColorDetector();
   final ColorDetectorSvm _svm       = ColorDetectorSvm();
 
-  ColorDetectorFactory();
+  ColorDetectorFactory({this.mode = ColorDetectorMode.ruleBased});
 
   Future<void> setFrame(img.Image frame) {
     return switch (mode) {

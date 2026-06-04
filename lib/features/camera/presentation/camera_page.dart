@@ -19,7 +19,7 @@ import 'package:baseer/features/object_detection/application/object_detection_se
 import 'package:baseer/features/object_detection/application/detection_formatter.dart';
 import 'package:baseer/features/object_detection/domain/coco_labels.dart';
 import 'package:baseer/core/command_router.dart';
-import 'package:baseer/features/text_extraction/application/text_extractor.dart';
+import 'package:baseer/features/text_extraction/application/text_extraction_service.dart';
 
 img.Image? _decodeImageBytes(Uint8List bytes) => img.decodeImage(bytes);
 
@@ -51,21 +51,31 @@ class _LiveCameraPageState extends State<LiveCameraPage>
   CameraController? _controller;
   late List<CameraDescription> _cameras;
   final SpeechToText _speech = SpeechToText();
-  final ColorDetectorFactory _colorDetector = ColorDetectorFactory();
-
-  // on-device object detection
-  
-  final ObjectDetectionService _objectDetector =
-      ObjectDetectionService.onDevice(
-        classNames: cocoClassNames,
-        modelAssetPath: 'assets/ml/yolov8n_int8.onnx',
-      );
-/*
-  // remote object detection
-  final ObjectDetectionService _objectDetector = ObjectDetectionService.remote(
-    baseUrl: dotenv.env['BASE_URI'] ?? 'http://192.168.1.22:8000',
+  // Controlled by COLOR_SOURCE in .env: 'svm' | 'rulebased'
+  final ColorDetectorFactory _colorDetector = ColorDetectorFactory(
+    mode: dotenv.env['COLOR_SOURCE']?.toLowerCase() == 'svm'
+        ? ColorDetectorMode.svm
+        : ColorDetectorMode.ruleBased,
   );
-*/
+
+  // Controlled by TEXT_SOURCE in .env: 'remote' | 'ondevice'
+  final TextExtractionService _textExtractor =
+      (dotenv.env['TEXT_SOURCE']?.toLowerCase() == 'remote')
+          ? TextExtractionService.remote(
+              baseUrl: dotenv.env['BASE_URI'] ?? 'http://192.168.1.22:8000',
+            )
+          : TextExtractionService.onDevice();
+
+  // Controlled by DETECTION_SOURCE in .env: 'remote' | 'ondevice'
+  final ObjectDetectionService _objectDetector =
+      (dotenv.env['DETECTION_SOURCE']?.toLowerCase() == 'remote')
+          ? ObjectDetectionService.remote(
+              baseUrl: dotenv.env['BASE_URI'] ?? 'http://192.168.1.22:8000',
+            )
+          : ObjectDetectionService.onDevice(
+              classNames: cocoClassNames,
+              modelAssetPath: 'assets/ml/yolov8n_int8.onnx',
+            );
   // ── Silent input / mode overlay ──
   bool _showSilentInput = false;
   final TextEditingController _silentInputCtrl = TextEditingController();
@@ -82,8 +92,6 @@ class _LiveCameraPageState extends State<LiveCameraPage>
   List<DetectedObject> _lastDetectedObjects = [];
   _AppMode _activeMode = _AppMode.detect;
 
-  bool get _useBackendForText =>
-      dotenv.env['TEXT_SOURCE']?.toLowerCase() == 'backend';
 
   // ── Animations ──
   late AnimationController _pulseController;
@@ -170,7 +178,7 @@ class _LiveCameraPageState extends State<LiveCameraPage>
 
     await TtsNarrator.instance.init();
 
-    await TextExtractor.initialize();
+    await _textExtractor.init();
 
     if (!mounted) return;
     await TtsNarrator.instance.speak('بصير جاهز.');
@@ -366,18 +374,13 @@ class _LiveCameraPageState extends State<LiveCameraPage>
       final XFile file = await _controller!.takePicture();
       await TtsNarrator.instance.speak('جاري قراءة النص');
 
-      final String text;
-      if (_useBackendForText) {
-        text = await _extractTextFromBackend(file.path);
-      } else {
-        final bytes = await File(file.path).readAsBytes();
-        final frame = await compute(_decodeImageBytes, bytes);
-        if (frame == null) {
-          await TtsNarrator.instance.speak('تعذّر تحليل الصورة');
-          return;
-        }
-        text = await TextExtractor.extractText(frame);
+      final bytes = await File(file.path).readAsBytes();
+      final frame = await compute(_decodeImageBytes, bytes);
+      if (frame == null) {
+        await TtsNarrator.instance.speak('تعذّر تحليل الصورة');
+        return;
       }
+      final String text = await _textExtractor.extractText(frame);
 
       if (text.isEmpty) {
         await TtsNarrator.instance.speak('لم يتم العثور على نص');
@@ -395,33 +398,6 @@ class _LiveCameraPageState extends State<LiveCameraPage>
     }
   }
 
-  Future<String> _extractTextFromBackend(String imagePath) async {
-    try {
-      final uri = Uri.parse('$_baseUri$_analyzeEndpoint');
-      debugPrint('Backend text → POST $uri');
-      final request = http.MultipartRequest('POST', uri)
-        ..fields['command'] = 'نص'
-        ..files.add(await http.MultipartFile.fromPath('file', imagePath));
-
-      final response = await request.send().timeout(
-        const Duration(seconds: 30),
-      );
-      final body = await response.stream.bytesToString();
-      debugPrint('Backend text ← ${response.statusCode}: $body');
-
-      if (response.statusCode != 200) return '';
-
-      final json = jsonDecode(body) as Map<String, dynamic>;
-      if (json.containsKey('error')) {
-        debugPrint('Backend error: ${json['error']}');
-        return '';
-      }
-      return json['description'] as String? ?? '';
-    } catch (e) {
-      debugPrint('Backend text exception: $e');
-      return '';
-    }
-  }
 
   // ─── Capture ─────────────────────────────────────────────────────────────
   Future<void> _captureAndSend() async {
