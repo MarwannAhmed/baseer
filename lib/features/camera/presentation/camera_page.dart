@@ -314,7 +314,7 @@ class _LiveCameraPageState extends State<LiveCameraPage>
       final sentence = DetectionFormatter.toSentence(results, isArabic: true);
 */
       final objects = await _objectDetector.detectObjects(frame);
-      final objectsWithDistance = _distanceEstimator.estimateForObjects(
+      final objectsWithDistance = await _distanceEstimator.estimateForObjects(
         objects: objects,
         imageWidth: frame.width,
         imageHeight: frame.height,
