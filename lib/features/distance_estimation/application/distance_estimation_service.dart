@@ -24,6 +24,7 @@ class DistanceEstimationService {
     required List<DetectedObject> objects,
     required int imageWidth,
     required int imageHeight,
+    required dynamic frame,
   }) {
     if (objects.isEmpty) return objects;
 
@@ -43,6 +44,7 @@ class DistanceEstimationService {
       objects: objects,
       imageWidth: imageWidth,
       imageHeight: imageHeight,
+      frame: frame,
     );
   }
 }

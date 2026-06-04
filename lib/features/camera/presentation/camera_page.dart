@@ -318,6 +318,7 @@ class _LiveCameraPageState extends State<LiveCameraPage>
         objects: objects,
         imageWidth: frame.width,
         imageHeight: frame.height,
+        frame: frame,
       );
       final sentence = DetectionFormatter.toSentenceFromObjects(
         objectsWithDistance,
