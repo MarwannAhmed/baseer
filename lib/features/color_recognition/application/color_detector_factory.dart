@@ -38,6 +38,9 @@ class ColorDetectorFactory {
   ) async {
     await setFrame(frame);
     return objects.map((obj) {
+      if (obj.label == 'person') {
+        return obj;
+      }
       final r = detect(
         obj.bbox['x1'] ?? 0, obj.bbox['y1'] ?? 0,
         obj.bbox['x2'] ?? 0, obj.bbox['y2'] ?? 0,
