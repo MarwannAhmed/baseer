@@ -12,15 +12,14 @@ import 'package:image/image.dart' as img;
 import 'package:speech_to_text/speech_to_text.dart';
 
 import 'package:baseer/core/services/tts_narrator.dart';
-import 'package:baseer/features/color_recognition/application/color_detector.dart';
-import 'package:baseer/features/text_extraction/application/text_extractor.dart';
+import 'package:baseer/features/color_recognition/application/color_detector_factory.dart';
 
 import 'package:baseer/features/analysis/domain/detected_object.dart';
 import 'package:baseer/features/object_detection/application/object_detection_service.dart';
 import 'package:baseer/features/object_detection/application/detection_formatter.dart';
 import 'package:baseer/features/object_detection/domain/coco_labels.dart';
 import 'package:baseer/core/command_router.dart';
-import 'package:baseer/features/object_detection/domain/detection_result.dart';
+import 'package:baseer/features/text_extraction/application/text_extractor.dart';
 
 img.Image? _decodeImageBytes(Uint8List bytes) => img.decodeImage(bytes);
 
@@ -52,7 +51,7 @@ class _LiveCameraPageState extends State<LiveCameraPage>
   CameraController? _controller;
   late List<CameraDescription> _cameras;
   final SpeechToText _speech = SpeechToText();
-  final ColorDetector _colorDetector = ColorDetector();
+  final ColorDetectorFactory _colorDetector = ColorDetectorFactory();
 
   final ObjectDetectionService _objectDetector =
       ObjectDetectionService.onDevice(
@@ -75,6 +74,11 @@ class _LiveCameraPageState extends State<LiveCameraPage>
   String _lastResult = '';
   List<DetectedObject> _lastDetectedObjects = [];
   _AppMode _activeMode = _AppMode.detect;
+
+  bool get _useBackendForDetection =>
+      dotenv.env['DETECTION_SOURCE']?.toLowerCase() == 'backend';
+  bool get _useBackendForText =>
+      dotenv.env['TEXT_SOURCE']?.toLowerCase() == 'backend';
 
   // ── Animations ──
   late AnimationController _pulseController;
@@ -288,7 +292,7 @@ class _LiveCameraPageState extends State<LiveCameraPage>
     }
   }
 
-  // ─── On-device object detection ───────────────────────────────────────────
+  // ─── Object detection (on-device or backend) ─────────────────────────────
   Future<void> _captureAndDetectObjects() async {
     if (_isProcessing) return;
     setState(() {
@@ -309,29 +313,20 @@ class _LiveCameraPageState extends State<LiveCameraPage>
         return;
       }
 
-      /*
-      final results = await _objectDetector.detect(frame);
-      final sentence = DetectionFormatter.toSentence(results, isArabic: true);
-*/
-      final objects = await _objectDetector.detectObjects(frame);
-      final sentence = DetectionFormatter.toSentence(
-        objects
-            .map(
-              (o) => DetectionResult(
-                label: o.label,
-                confidence: o.confidence,
-                boundingBox: BoundingBox(
-                  x1: o.bbox['x1']!.toDouble(),
-                  y1: o.bbox['y1']!.toDouble(),
-                  x2: o.bbox['x2']!.toDouble(),
-                  y2: o.bbox['y2']!.toDouble(),
-                ),
-              ),
-            )
-            .toList(),
+      final List<DetectedObject> coloredObjects;
+      if (_useBackendForDetection) {
+        coloredObjects = await _detectObjectsFromBackend(file.path, frame);
+      } else {
+        final objects = await _objectDetector.detectObjects(frame);
+        coloredObjects =
+            await _colorDetector.detectColorsForObjects(frame, objects);
+      }
+
+      setState(() => _lastDetectedObjects = coloredObjects);
+      final sentence = DetectionFormatter.toSentenceFromObjects(
+        coloredObjects,
         isArabic: true,
       );
-      setState(() => _lastDetectedObjects = objects);
       setState(() => _lastResult = sentence);
       _resultFadeController.forward();
       await TtsNarrator.instance.speak(sentence);
@@ -344,7 +339,46 @@ class _LiveCameraPageState extends State<LiveCameraPage>
     }
   }
 
-  // ─── Local text extraction ────────────────────────────────────────────────
+  Future<List<DetectedObject>> _detectObjectsFromBackend(
+    String imagePath,
+    img.Image frame,
+  ) async {
+    try {
+      final uri = Uri.parse('$_baseUri$_analyzeEndpoint');
+      debugPrint('Backend detect → POST $uri');
+      final request = http.MultipartRequest('POST', uri)
+        ..fields['command'] = 'كشف'
+        ..files.add(await http.MultipartFile.fromPath('file', imagePath));
+
+      final response = await request.send().timeout(
+        const Duration(seconds: 30),
+      );
+      final body = await response.stream.bytesToString();
+      debugPrint('Backend detect ← ${response.statusCode}: $body');
+
+      if (response.statusCode != 200) {
+        debugPrint("ERrrrorororororor");
+        return [];}
+
+      final json = jsonDecode(body) as Map<String, dynamic>;
+      if (json.containsKey('error')) {
+        debugPrint('Backend error: ${json['error']}');
+        return [];
+      }
+
+      final rawList = json['objects'] as List<dynamic>? ?? [];
+      final objects = rawList
+          .map((o) => DetectedObject.fromJson(o as Map<String, dynamic>))
+          .toList();
+
+      return _colorDetector.detectColorsForObjects(frame, objects);
+    } catch (e) {
+      debugPrint('Backend detect exception: $e');
+      return [];
+    }
+  }
+
+  // ─── Text extraction (on-device or backend) ──────────────────────────────
   Future<void> _captureAndExtractText() async {
     if (_isProcessing) return;
     setState(() {
@@ -358,17 +392,18 @@ class _LiveCameraPageState extends State<LiveCameraPage>
       final XFile file = await _controller!.takePicture();
       await TtsNarrator.instance.speak('جاري قراءة النص');
 
-      final bytes = await File(file.path).readAsBytes();
-
-      // Decode the image first (exactly like color detection)
-      final frame = await compute(_decodeImageBytes, bytes);
-      if (frame == null) {
-        await TtsNarrator.instance.speak('تعذّر تحليل الصورة');
-        return;
+      final String text;
+      if (_useBackendForText) {
+        text = await _extractTextFromBackend(file.path);
+      } else {
+        final bytes = await File(file.path).readAsBytes();
+        final frame = await compute(_decodeImageBytes, bytes);
+        if (frame == null) {
+          await TtsNarrator.instance.speak('تعذّر تحليل الصورة');
+          return;
+        }
+        text = await TextExtractor.extractText(frame);
       }
-
-      // Pass the decoded image directly to extractText
-      final text = await TextExtractor.extractText(frame);
 
       if (text.isEmpty) {
         await TtsNarrator.instance.speak('لم يتم العثور على نص');
@@ -379,10 +414,38 @@ class _LiveCameraPageState extends State<LiveCameraPage>
         await TtsNarrator.instance.speak(text);
       }
     } catch (e) {
-      print('OCR Error: $e');
+      debugPrint('OCR error: $e');
       await TtsNarrator.instance.speak('حدث خطأ في قراءة النص');
     } finally {
       if (mounted) setState(() => _isProcessing = false);
+    }
+  }
+
+  Future<String> _extractTextFromBackend(String imagePath) async {
+    try {
+      final uri = Uri.parse('$_baseUri$_analyzeEndpoint');
+      debugPrint('Backend text → POST $uri');
+      final request = http.MultipartRequest('POST', uri)
+        ..fields['command'] = 'نص'
+        ..files.add(await http.MultipartFile.fromPath('file', imagePath));
+
+      final response = await request.send().timeout(
+        const Duration(seconds: 30),
+      );
+      final body = await response.stream.bytesToString();
+      debugPrint('Backend text ← ${response.statusCode}: $body');
+
+      if (response.statusCode != 200) return '';
+
+      final json = jsonDecode(body) as Map<String, dynamic>;
+      if (json.containsKey('error')) {
+        debugPrint('Backend error: ${json['error']}');
+        return '';
+      }
+      return json['description'] as String? ?? '';
+    } catch (e) {
+      debugPrint('Backend text exception: $e');
+      return '';
     }
   }
 
@@ -710,14 +773,12 @@ class _CameraBackground extends StatelessWidget {
 class _VignetteOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return const Positioned.fill(
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: RadialGradient(
-            center: Alignment.center,
-            radius: 1.2,
-            colors: [Colors.transparent, Color(0xAA000000)],
-          ),
+    return const DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: RadialGradient(
+          center: Alignment.center,
+          radius: 1.2,
+          colors: [Colors.transparent, Color(0xAA000000)],
         ),
       ),
     );

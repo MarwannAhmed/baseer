@@ -1,3 +1,5 @@
+import 'package:baseer/features/analysis/domain/detected_object.dart';
+
 import '../domain/detection_result.dart';
 
 const Map<String, String> _cocoArabic = {
@@ -137,5 +139,45 @@ abstract final class DetectionFormatter {
     if (parts.length == 1) return 'أرى ${parts[0]}.';
     final last = parts.removeLast();
     return 'أرى ${parts.join('، ')}، و$last.';
+  }
+
+  // ── DetectedObject overloads (includes colour) ─────────────────────────────
+
+  /// Like [toSentence] but accepts [DetectedObject] and includes colour.
+  static String toSentenceFromObjects(
+    List<DetectedObject> objects, {
+    bool isArabic = false,
+    int maxObjects = 5,
+  }) {
+    if (objects.isEmpty) {
+      return isArabic ? 'لا يوجد أي شيء في المشهد.' : 'Nothing detected.';
+    }
+    final shown = objects.take(maxObjects).toList();
+    return isArabic
+        ? _buildArabicFromObjects(shown)
+        : _buildEnglishFromObjects(shown);
+  }
+
+  static String _buildArabicFromObjects(List<DetectedObject> objects) {
+    final parts = objects.map((o) {
+      final name  = _cocoArabic[o.label] ?? o.label;
+      final color = o.colorAr.isNotEmpty ? ' ${o.colorAr}' : '';
+      return '$name$color';
+    }).toList();
+
+    if (parts.length == 1) return 'أرى ${parts[0]}.';
+    final last = parts.removeLast();
+    return 'أرى ${parts.join('، ')}، و$last.';
+  }
+
+  static String _buildEnglishFromObjects(List<DetectedObject> objects) {
+    final parts = objects.map((o) {
+      final color = o.colorEn.isNotEmpty ? '${o.colorEn} ' : '';
+      return 'a $color${o.label}';
+    }).toList();
+
+    if (parts.length == 1) return 'I see ${parts[0]}.';
+    final last = parts.removeLast();
+    return 'I see ${parts.join(', ')}, and $last.';
   }
 }
