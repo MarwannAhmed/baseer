@@ -1,3 +1,5 @@
+import 'package:baseer/features/analysis/domain/detected_object.dart';
+
 import '../domain/detection_result.dart';
 
 const Map<String, String> _cocoArabic = {
@@ -108,6 +110,24 @@ abstract final class DetectionFormatter {
     }
   }
 
+  static String toSentenceFromObjects(
+    List<DetectedObject> objects, {
+    bool isArabic = false,
+    int maxObjects = 5,
+  }) {
+    if (objects.isEmpty) {
+      return isArabic ? 'لا يوجد أي شيء في المشهد.' : 'Nothing detected.';
+    }
+
+    final shown = objects.take(maxObjects).toList();
+
+    if (isArabic) {
+      return _buildArabicObjects(shown);
+    } else {
+      return _buildEnglishObjects(shown);
+    }
+  }
+
   // ── English ────────────────────────────────────────────────────────────────
 
   static String _buildEnglish(List<DetectionResult> results) {
@@ -132,6 +152,41 @@ abstract final class DetectionFormatter {
       return '$name بثقة ${r.confidencePercent} '
           'في الموضع ${b.x1.round()}، ${b.y1.round()} '
           'إلى ${b.x2.round()}، ${b.y2.round()}';
+    }).toList();
+
+    if (parts.length == 1) return 'أرى ${parts[0]}.';
+    final last = parts.removeLast();
+    return 'أرى ${parts.join('، ')}، و$last.';
+  }
+
+  static String _buildEnglishObjects(List<DetectedObject> objects) {
+    final parts = objects.map((o) {
+      final b = o.bbox;
+      final distance = o.distanceCm > 0
+          ? ' at distance ${o.distanceCm} cm'
+          : '';
+      final percent = (o.confidence * 100).round();
+      return 'a ${o.label} with $percent% confidence '
+          'at position ${b['x1'] ?? 0}, ${b['y1'] ?? 0} '
+          'to ${b['x2'] ?? 0}, ${b['y2'] ?? 0}$distance';
+    }).toList();
+
+    if (parts.length == 1) return 'I see ${parts[0]}.';
+    final last = parts.removeLast();
+    return 'I see ${parts.join(', ')}, and $last.';
+  }
+
+  static String _buildArabicObjects(List<DetectedObject> objects) {
+    final parts = objects.map((o) {
+      final name = _cocoArabic[o.label] ?? o.label;
+      final b = o.bbox;
+      final distance = o.distanceCm > 0
+          ? ' على بعد ${o.distanceCm} سم'
+          : '';
+      final percent = (o.confidence * 100).round();
+      return '$name بثقة $percent% '
+          'في الموضع ${b['x1'] ?? 0}، ${b['y1'] ?? 0} '
+          'إلى ${b['x2'] ?? 0}، ${b['y2'] ?? 0}$distance';
     }).toList();
 
     if (parts.length == 1) return 'أرى ${parts[0]}.';

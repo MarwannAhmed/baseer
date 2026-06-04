@@ -15,11 +15,11 @@ import 'package:baseer/core/services/tts_narrator.dart';
 import 'package:baseer/features/color_recognition/application/color_detector.dart';
 
 import 'package:baseer/features/analysis/domain/detected_object.dart';
+import 'package:baseer/features/distance_estimation/application/distance_estimation_service.dart';
 import 'package:baseer/features/object_detection/application/object_detection_service.dart';
 import 'package:baseer/features/object_detection/application/detection_formatter.dart';
 import 'package:baseer/features/object_detection/domain/coco_labels.dart';
 import 'package:baseer/core/command_router.dart';
-import 'package:baseer/features/object_detection/domain/detection_result.dart';
 
 img.Image? _decodeImageBytes(Uint8List bytes) => img.decodeImage(bytes);
 
@@ -58,6 +58,8 @@ class _LiveCameraPageState extends State<LiveCameraPage>
         classNames: cocoClassNames,
         modelAssetPath: 'assets/ml/yolov8n_int8.onnx',
       );
+  final DistanceEstimationService _distanceEstimator =
+      DistanceEstimationService.fromEnv();
 
   // ── Silent input / mode overlay ──
   bool _showSilentInput = false;
@@ -308,24 +310,16 @@ class _LiveCameraPageState extends State<LiveCameraPage>
       final sentence = DetectionFormatter.toSentence(results, isArabic: true);
 */
       final objects = await _objectDetector.detectObjects(frame);
-      final sentence = DetectionFormatter.toSentence(
-        objects
-            .map(
-              (o) => DetectionResult(
-                label: o.label,
-                confidence: o.confidence,
-                boundingBox: BoundingBox(
-                  x1: o.bbox['x1']!.toDouble(),
-                  y1: o.bbox['y1']!.toDouble(),
-                  x2: o.bbox['x2']!.toDouble(),
-                  y2: o.bbox['y2']!.toDouble(),
-                ),
-              ),
-            )
-            .toList(),
+      final objectsWithDistance = _distanceEstimator.estimateForObjects(
+        objects: objects,
+        imageWidth: frame.width,
+        imageHeight: frame.height,
+      );
+      final sentence = DetectionFormatter.toSentenceFromObjects(
+        objectsWithDistance,
         isArabic: true,
       );
-      setState(() => _lastDetectedObjects = objects);
+      setState(() => _lastDetectedObjects = objectsWithDistance);
       setState(() => _lastResult = sentence);
       _resultFadeController.forward();
       await TtsNarrator.instance.speak(sentence);
