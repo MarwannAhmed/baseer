@@ -28,4 +28,18 @@ class DistanceMethodConfig {
     if (value != null && value > 0) return value;
     return 69.0;
   }
+
+  static double readCameraHeightMeters() {
+    final raw = dotenv.env['H_CAM']?.trim();
+    final value = double.tryParse(raw ?? '');
+    if (value != null && value > 0) return value;
+    return 1.20;
+  }
+
+  static double readPitchDeg() {
+    final raw = dotenv.env['PITCH_DEG']?.trim();
+    final value = double.tryParse(raw ?? '');
+    if (value != null) return value;
+    return 15.0;
+  }
 }
