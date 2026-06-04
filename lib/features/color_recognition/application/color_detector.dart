@@ -335,7 +335,7 @@ class ColorDetector {
 
     //pick largest cluster
     final List<int> sizes = List.filled(_kmeansK, 0);
-    for (final l in labels) sizes[l]++;
+    for (final l in labels) {sizes[l]++;}
     int best = 0;
     for (int k = 1; k < _kmeansK; k++) {
       if (sizes[k] > sizes[best]) best = k;

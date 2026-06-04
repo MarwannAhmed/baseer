@@ -311,9 +311,9 @@ class TextExtractor {
     } else if (value is num) {
       out.add(value.toDouble());
     } else if (value is Float32List) {
-      for (final v in value) out.add(v.toDouble());
+      for (final v in value) {out.add(v.toDouble()); }
     } else if (value is List) {
-      for (final item in value) _collect(item, out);
+      for (final item in value) {_collect(item, out); }
     }
   }
 

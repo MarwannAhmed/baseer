@@ -14,7 +14,7 @@ import 'package:speech_to_text/speech_to_text.dart';
 import 'package:baseer/core/services/tts_narrator.dart';
 import 'package:baseer/features/color_recognition/application/color_detector_factory.dart';
 
-import 'package:baseer/features/analysis/domain/detected_object.dart';
+import 'package:baseer/features/distance_estimation/application/distance_estimation_service.dart';
 import 'package:baseer/features/object_detection/application/object_detection_service.dart';
 import 'package:baseer/features/object_detection/application/detection_formatter.dart';
 import 'package:baseer/features/object_detection/domain/coco_labels.dart';
@@ -76,6 +76,8 @@ class _LiveCameraPageState extends State<LiveCameraPage>
               classNames: cocoClassNames,
               modelAssetPath: 'assets/ml/yolov8n_int8.onnx',
             );
+    final DistanceEstimationService _distanceEstimator =
+      DistanceEstimationService.fromEnv();
   // ── Silent input / mode overlay ──
   bool _showSilentInput = false;
   final TextEditingController _silentInputCtrl = TextEditingController();
@@ -89,7 +91,6 @@ class _LiveCameraPageState extends State<LiveCameraPage>
   String _lastCommand = 'كشف';
   String _sttLocale = 'ar_EG';
   String _lastResult = '';
-  List<DetectedObject> _lastDetectedObjects = [];
   _AppMode _activeMode = _AppMode.detect;
 
 
@@ -248,8 +249,6 @@ class _LiveCameraPageState extends State<LiveCameraPage>
             await _switchMode(_AppMode.color);
           } else if (command == AppCommand.readText) {
             await _switchMode(_AppMode.text);
-          } else if (command == AppCommand.estimateDistance) {
-            await _switchMode(_AppMode.distance);
           }
         } else {
           await TtsNarrator.instance.speak('لم أسمع شيئاً. حاول مجدداً.');
@@ -342,10 +341,16 @@ class _LiveCameraPageState extends State<LiveCameraPage>
 
       final coloredObjects =
           await _colorDetector.detectColorsForObjects(frame, objects);
+      
+      final objectsWithDistance = await _distanceEstimator.estimateForObjects(
+        objects: coloredObjects,
+        imageWidth: frame.width,
+        imageHeight: frame.height,
+        frame: frame,
+      );
 
-      setState(() => _lastDetectedObjects = coloredObjects);
       final sentence = DetectionFormatter.toSentenceFromObjects(
-        coloredObjects,
+        objectsWithDistance,
         isArabic: true,
       );
       setState(() => _lastResult = sentence);
@@ -660,7 +665,6 @@ class _LiveCameraPageState extends State<LiveCameraPage>
 enum _AppMode {
   detect('كشف', 'وضع الكشف', 'كشف'),
   text('نص', 'وضع قراءة النص', 'نص'),
-  distance('مسافة', 'وضع قياس المسافة', 'مسافة'),
   color('لون', 'وضع كشف اللون', 'لون');
 
   const _AppMode(this.label, this.announcementAr, this.defaultCommand);

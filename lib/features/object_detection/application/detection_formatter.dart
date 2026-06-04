@@ -110,6 +110,21 @@ abstract final class DetectionFormatter {
     }
   }
 
+  static String toSentenceFromObjects(
+    List<DetectedObject> objects, {
+    bool isArabic = false,
+    int maxObjects = 5,
+  }) {
+    if (objects.isEmpty) {
+      return isArabic ? 'لا يوجد أي شيء في المشهد.' : 'Nothing detected.';
+    }
+
+    final shown = objects.take(maxObjects).toList();
+    return isArabic
+        ? _buildArabicObjects(shown)
+        : _buildEnglishObjects(shown);
+  }
+
   // ── English ────────────────────────────────────────────────────────────────
 
   static String _buildEnglish(List<DetectionResult> results) {
@@ -141,43 +156,33 @@ abstract final class DetectionFormatter {
     return 'أرى ${parts.join('، ')}، و$last.';
   }
 
-  // ── DetectedObject overloads (includes colour) ─────────────────────────────
-
-  /// Like [toSentence] but accepts [DetectedObject] and includes colour.
-  static String toSentenceFromObjects(
-    List<DetectedObject> objects, {
-    bool isArabic = false,
-    int maxObjects = 5,
-  }) {
-    if (objects.isEmpty) {
-      return isArabic ? 'لا يوجد أي شيء في المشهد.' : 'Nothing detected.';
-    }
-    final shown = objects.take(maxObjects).toList();
-    return isArabic
-        ? _buildArabicFromObjects(shown)
-        : _buildEnglishFromObjects(shown);
-  }
-
-  static String _buildArabicFromObjects(List<DetectedObject> objects) {
-    final parts = objects.map((o) {
-      final name  = _cocoArabic[o.label] ?? o.label;
-      final color = o.colorAr.isNotEmpty ? ' ${o.colorAr}' : '';
-      return '$name$color';
-    }).toList();
-
-    if (parts.length == 1) return 'أرى ${parts[0]}.';
-    final last = parts.removeLast();
-    return 'أرى ${parts.join('، ')}، و$last.';
-  }
-
-  static String _buildEnglishFromObjects(List<DetectedObject> objects) {
-    final parts = objects.map((o) {
+  // ── DetectedObject overloads (includes colour + distance) ──────────────────
+  static String _buildEnglishObjects(List<DetectedObject> objects) {
+      final parts = objects.map((o) {
       final color = o.colorEn.isNotEmpty ? '${o.colorEn} ' : '';
-      return 'a $color${o.label}';
-    }).toList();
+        final distance = o.distanceCm > 0
+            ? ' at distance ${o.distanceCm} cm'
+            : '';
+      return 'a $color${o.label}$distance';
+      }).toList();
 
-    if (parts.length == 1) return 'I see ${parts[0]}.';
-    final last = parts.removeLast();
-    return 'I see ${parts.join(', ')}, and $last.';
-  }
+      if (parts.length == 1) return 'I see ${parts[0]}.';
+      final last = parts.removeLast();
+      return 'I see ${parts.join(', ')}, and $last.';
+    }
+
+    static String _buildArabicObjects(List<DetectedObject> objects) {
+      final parts = objects.map((o) {
+        final name = _cocoArabic[o.label] ?? o.label;
+        final color = o.colorAr.isNotEmpty ? ' ${o.colorAr}' : '';
+        final distance = o.distanceCm > 0
+            ? ' على بعد ${o.distanceCm} سم'
+            : '';
+        return '$name$color$distance';
+      }).toList();
+
+      if (parts.length == 1) return 'أرى ${parts[0]}.';
+      final last = parts.removeLast();
+      return 'أرى ${parts.join('، ')}، و$last.';
+    }
 }

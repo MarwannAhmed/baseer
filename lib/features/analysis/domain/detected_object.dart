@@ -22,6 +22,19 @@ class DetectedObject {
     required this.distanceCm,
   });
 
+  DetectedObject copyWithDistance({required int distanceCm}) {
+    return DetectedObject(
+      label: label,
+      confidence: confidence,
+      bbox: bbox,
+      center: center,
+      size: size,
+      colorEn: colorEn,
+      colorAr: colorAr,
+      distanceCm: distanceCm,
+    );
+  }
+
   factory DetectedObject.fromJson(Map<String, dynamic> json) {
     return DetectedObject(
       label: json['label'] as String? ?? '',

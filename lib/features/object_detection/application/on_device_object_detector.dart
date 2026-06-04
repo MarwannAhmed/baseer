@@ -16,7 +16,6 @@
 // If your model uses a different layout (YOLOv5 / custom), see the NOTE in
 // _postprocess() and adjust accordingly.
 
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
@@ -330,7 +329,7 @@ _PreprocessOutput _preprocessIsolate(_PreprocessInput input) {
 
   // ── Allocate output tensor, pre-fill with 0.5 (gray letterbox border) ─────
   final Float32List output = Float32List(3 * size * size);
-  for (int i = 0; i < output.length; i++) output[i] = 0.5;
+  for (int i = 0; i < output.length; i++) {output[i] = 0.5;}
 
   // ── Bilinear resize + normalize + CHW layout ──────────────────────────────
   for (int py = 0; py < newH; py++) {
