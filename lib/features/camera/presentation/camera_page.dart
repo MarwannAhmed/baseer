@@ -46,7 +46,7 @@ class _LiveCameraPageState extends State<LiveCameraPage>
   // ── Backend ──
   static const String _analyzeEndpoint = '/analyze';
   String get _baseUri =>
-      dotenv.env['BASE_URI']?.trim() ?? 'http://127.0.0.1:8000';
+      dotenv.env['BASE_URI']?.trim() ?? 'http://192.168.1.22:8000';
 
   // ── Camera / speech ──
   CameraController? _controller;
@@ -64,7 +64,7 @@ class _LiveCameraPageState extends State<LiveCameraPage>
 */
   // remote object detection
   final ObjectDetectionService _objectDetector = ObjectDetectionService.remote(
-    baseUrl: dotenv.env['BASE_URI'] ?? 'http://127.0.0.1:8000',
+    baseUrl: dotenv.env['BASE_URI'] ?? 'http://192.168.1.22:8000',
   );
 
   // ── Silent input / mode overlay ──
