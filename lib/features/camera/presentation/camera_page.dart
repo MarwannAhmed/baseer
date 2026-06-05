@@ -45,7 +45,7 @@ class _LiveCameraPageState extends State<LiveCameraPage>
   // ── Backend ──
   static const String _analyzeEndpoint = '/analyze';
   String get _baseUri =>
-      dotenv.env['BASE_URI']?.trim() ?? 'http://192.168.1.22:8000';
+      dotenv.env['BASE_URI']?.trim() ?? 'https://baseer-backend-crf6g8gscthna7d5.uaenorth-01.azurewebsites.net';
 
   // ── Camera / speech ──
   CameraController? _controller;
@@ -62,7 +62,7 @@ class _LiveCameraPageState extends State<LiveCameraPage>
   final TextExtractionService _textExtractor =
       (dotenv.env['TEXT_SOURCE']?.toLowerCase() == 'remote')
       ? TextExtractionService.remote(
-          baseUrl: dotenv.env['BASE_URI'] ?? 'http://192.168.1.22:8000',
+          baseUrl: dotenv.env['BASE_URI'] ?? 'https://baseer-backend-crf6g8gscthna7d5.uaenorth-01.azurewebsites.net',
         )
       : TextExtractionService.onDevice();
 
@@ -70,7 +70,7 @@ class _LiveCameraPageState extends State<LiveCameraPage>
   final ObjectDetectionService _objectDetector =
       (dotenv.env['DETECTION_SOURCE']?.toLowerCase() == 'remote')
       ? ObjectDetectionService.remote(
-          baseUrl: dotenv.env['BASE_URI'] ?? 'http://192.168.1.22:8000',
+          baseUrl: dotenv.env['BASE_URI'] ?? 'https://baseer-backend-crf6g8gscthna7d5.uaenorth-01.azurewebsites.net',
         )
       : ObjectDetectionService.onDevice(
           classNames: cocoClassNames,

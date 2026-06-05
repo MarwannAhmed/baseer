@@ -61,11 +61,7 @@ flutter pub get
 Create a `.env` file in the project root:
 
 ```env
-# URL of the FastAPI backend
-# Android emulator → http://10.0.2.2:8000
-# Real device      → http://<your-machine-LAN-ip>:8000
-# Desktop          → http://127.0.0.1:8000
-BASE_URI=http://127.0.0.1:8000
+BASE_URI=https://baseer-backend-crf6g8gscthna7d5.uaenorth-01.azurewebsites.net
 
 # Inference source for object detection (كشف mode)
 # ondevice → on-device ONNX model
