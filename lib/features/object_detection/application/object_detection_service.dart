@@ -43,13 +43,13 @@ class ObjectDetectionService {
     final results = await _detector.detect(image);
     return results
         .map(
-          (r) => DetectedObject.fromDetectionResult(
-            label: r.label,
-            confidence: r.confidence,
-            x1: r.boundingBox.x1.round(),
-            y1: r.boundingBox.y1.round(),
-            x2: r.boundingBox.x2.round(),
-            y2: r.boundingBox.y2.round(),
+          (result) => DetectedObject.fromDetectionResult(
+            label: result.label,
+            confidence: result.confidence,
+            x1: result.boundingBox.x1.round(),
+            y1: result.boundingBox.y1.round(),
+            x2: result.boundingBox.x2.round(),
+            y2: result.boundingBox.y2.round(),
           ),
         )
         .toList();
