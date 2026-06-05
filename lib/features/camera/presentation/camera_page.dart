@@ -61,22 +61,24 @@ class _LiveCameraPageState extends State<LiveCameraPage>
   // Controlled by TEXT_SOURCE in .env: 'remote' | 'ondevice'
   final TextExtractionService _textExtractor =
       (dotenv.env['TEXT_SOURCE']?.toLowerCase() == 'remote')
-          ? TextExtractionService.remote(
-              baseUrl: dotenv.env['BASE_URI'] ?? 'http://192.168.1.22:8000',
-            )
-          : TextExtractionService.onDevice();
+      ? TextExtractionService.remote(
+          baseUrl: dotenv.env['BASE_URI'] ?? 'http://192.168.1.22:8000',
+        )
+      : TextExtractionService.onDevice();
 
   // Controlled by DETECTION_SOURCE in .env: 'remote' | 'ondevice'
   final ObjectDetectionService _objectDetector =
       (dotenv.env['DETECTION_SOURCE']?.toLowerCase() == 'remote')
-          ? ObjectDetectionService.remote(
-              baseUrl: dotenv.env['BASE_URI'] ?? 'http://192.168.1.22:8000',
-            )
-          : ObjectDetectionService.onDevice(
-              classNames: cocoClassNames,
-              modelAssetPath: 'assets/ml/yolov8n_int8.onnx',
-            );
-    final DistanceEstimationService _distanceEstimator =
+      ? ObjectDetectionService.remote(
+          baseUrl: dotenv.env['BASE_URI'] ?? 'http://192.168.1.22:8000',
+        )
+      : ObjectDetectionService.onDevice(
+          classNames: cocoClassNames,
+          modelAssetPath:
+              dotenv.env['DETECTION_MODEL'] ?? 'assets/ml/yolov8n_int8.onnx',
+        );
+
+  final DistanceEstimationService _distanceEstimator =
       DistanceEstimationService.fromEnv();
   // ── Silent input / mode overlay ──
   bool _showSilentInput = false;
@@ -92,7 +94,6 @@ class _LiveCameraPageState extends State<LiveCameraPage>
   String _sttLocale = 'ar_EG';
   String _lastResult = '';
   _AppMode _activeMode = _AppMode.detect;
-
 
   // ── Animations ──
   late AnimationController _pulseController;
@@ -271,7 +272,7 @@ class _LiveCameraPageState extends State<LiveCameraPage>
     } else if (_activeMode == _AppMode.detect) {
       await _captureAndDetectObjects();
     } else if (_activeMode == _AppMode.text) {
-    await _captureAndExtractText();
+      await _captureAndExtractText();
     } else {
       await _captureAndSend();
     }
@@ -332,16 +333,20 @@ class _LiveCameraPageState extends State<LiveCameraPage>
         await TtsNarrator.instance.speak('تعذّر تحليل الصورة');
         return;
       }
-    
+
       final objects = await _objectDetector.detectObjects(frame);
 
       for (final o in objects) {
-        debugPrint('📦 ${o.label} | bbox=${o.bbox} | confidence=${o.confidence.toStringAsFixed(2)}');
+        debugPrint(
+          '📦 ${o.label} | bbox=${o.bbox} | confidence=${o.confidence.toStringAsFixed(2)}',
+        );
       }
 
-      final coloredObjects =
-          await _colorDetector.detectColorsForObjects(frame, objects);
-      
+      final coloredObjects = await _colorDetector.detectColorsForObjects(
+        frame,
+        objects,
+      );
+
       final objectsWithDistance = await _distanceEstimator.estimateForObjects(
         objects: coloredObjects,
         imageWidth: frame.width,
@@ -402,7 +407,6 @@ class _LiveCameraPageState extends State<LiveCameraPage>
       if (mounted) setState(() => _isProcessing = false);
     }
   }
-
 
   // ─── Capture ─────────────────────────────────────────────────────────────
   Future<void> _captureAndSend() async {

@@ -68,13 +68,18 @@ Create a `.env` file in the project root:
 BASE_URI=http://127.0.0.1:8000
 
 # Inference source for object detection (كشف mode)
-# ondevice → on-device YOLOv8 ONNX model
-# backend  → POST /analyze with command "كشف"
+# ondevice → on-device ONNX model
+# remote  → POST /analyze with command "كشف"
 DETECTION_SOURCE=ondevice
+
+# On-device model path for object detection 
+# assets/ml/yolov8_int8.onnx → on-device optimised YOLOv8n ONNX model
+# assets/ml/hybrid_yolov8n_mobilenet.onnx → on-device hybrid YOLOv8n & MobileNetV2 ONNX model
+DETECTION_SOURCE=assets/ml/yolov8n_int8.onnx
 
 # Inference source for text extraction (نص mode)
 # ondevice → on-device OCR ONNX model
-# backend  → POST /analyze with command "نص"
+# remote  → POST /analyze with command "نص"
 TEXT_SOURCE=ondevice
 
 # 'svm' → SVM-based color detection  |  'rulebased' → rule-based (default)
