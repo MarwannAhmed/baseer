@@ -16,11 +16,6 @@ class BoundingBox {
 
   double get centerX => (x1 + x2) / 2;
   double get centerY => (y1 + y2) / 2;
-
-  @override
-  String toString() =>
-      'BBox(x1:${x1.toStringAsFixed(1)}, y1:${y1.toStringAsFixed(1)}, '
-      'x2:${x2.toStringAsFixed(1)}, y2:${y2.toStringAsFixed(1)})';
 }
 
 class DetectionResult {
@@ -35,9 +30,4 @@ class DetectionResult {
     required this.confidence,
     required this.boundingBox,
   });
-
-  String get confidencePercent => '${(confidence * 100).round()}%';
-
-  @override
-  String toString() => 'Detection($label @ $confidencePercent, $boundingBox)';
 }
