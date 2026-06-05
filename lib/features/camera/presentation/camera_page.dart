@@ -51,12 +51,18 @@ class _LiveCameraPageState extends State<LiveCameraPage>
   CameraController? _controller;
   late List<CameraDescription> _cameras;
   final SpeechToText _speech = SpeechToText();
-  // Controlled by COLOR_SOURCE in .env: 'svm' | 'rulebased'
-  final ColorDetectorFactory _colorDetector = ColorDetectorFactory(
-    mode: dotenv.env['COLOR_SOURCE']?.toLowerCase() == 'svm'
-        ? ColorDetectorMode.svm
-        : ColorDetectorMode.ruleBased,
-  );
+  // Controlled by COLOR_SOURCE in .env: 'backend' | 'svm' | 'rulebased'
+  final ColorDetectorFactory _colorDetector = (() {
+    final src = dotenv.env['COLOR_SOURCE']?.toLowerCase() ?? 'rulebased';
+    return ColorDetectorFactory(
+      mode: switch (src) {
+        'svm'     => ColorDetectorMode.svm,
+        'backend' => ColorDetectorMode.backend,
+        _         => ColorDetectorMode.ruleBased,
+      },
+      baseUrl: dotenv.env['BASE_URI'],
+    );
+  })();
 
   // Controlled by TEXT_SOURCE in .env: 'remote' | 'ondevice'
   final TextExtractionService _textExtractor =
