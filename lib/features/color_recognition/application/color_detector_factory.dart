@@ -3,10 +3,12 @@ import 'package:image/image.dart' as img;
 import 'package:baseer/features/analysis/domain/detected_object.dart';
 import 'package:baseer/features/color_recognition/application/color_detector.dart';
 import 'package:baseer/features/color_recognition/application/color_detector_svm.dart';
+import 'package:baseer/features/color_recognition/application/remote_color_detector.dart';
 
 enum ColorDetectorMode {
   ruleBased, // original rule-based, no deps, always works out of the box
   svm,       // onnx svm -- needs assets/ml/ and the onnxruntime package
+  backend,   // remote HTTP backend at BASE_URI
 }
 
 class ColorDetectorFactory {
@@ -15,20 +17,33 @@ class ColorDetectorFactory {
   // both held so we dont reinit on every mode switch
   final ColorDetector    _ruleBased = ColorDetector();
   final ColorDetectorSvm _svm       = ColorDetectorSvm();
+  RemoteColorDetector?   _remote;
 
-  ColorDetectorFactory({this.mode = ColorDetectorMode.ruleBased});
+  UnifiedColorResult? _cachedRemoteResult;
 
-  Future<void> setFrame(img.Image frame) {
-    return switch (mode) {
-      ColorDetectorMode.ruleBased => _ruleBased.setFrame(frame),
-      ColorDetectorMode.svm       => _svm.setFrame(frame),
-    };
+  ColorDetectorFactory({this.mode = ColorDetectorMode.ruleBased, String? baseUrl}) {
+    if (mode == ColorDetectorMode.backend) {
+      _remote = RemoteColorDetector(baseUrl: baseUrl ?? 'http://127.0.0.1:8000');
+    }
+  }
+
+  Future<void> setFrame(img.Image frame) async {
+    switch (mode) {
+      case ColorDetectorMode.ruleBased:
+        return _ruleBased.setFrame(frame);
+      case ColorDetectorMode.svm:
+        return _svm.setFrame(frame);
+      case ColorDetectorMode.backend:
+        _cachedRemoteResult = await _remote!.detect(frame);
+    }
   }
 
   UnifiedColorResult detect(int x1, int y1, int x2, int y2) {
     return switch (mode) {
       ColorDetectorMode.ruleBased => _ruleBased.detect(x1, y1, x2, y2).toUnified(),
       ColorDetectorMode.svm       => _svm.detect(x1, y1, x2, y2).toUnified(),
+      ColorDetectorMode.backend   => _cachedRemoteResult ??
+          const UnifiedColorResult(colorEn: 'unknown', colorAr: 'غير معروف'),
     };
   }
 
