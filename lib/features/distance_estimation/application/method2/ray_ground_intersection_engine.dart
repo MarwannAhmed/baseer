@@ -30,8 +30,8 @@ class RayGroundIntersectionEngine {
     required CameraIntrinsicsManager intrinsics,
     required CameraExtrinsicsManager extrinsics,
   }) {
-    final cx = intrinsics.imageWidth / 2.0;
-    final cy = intrinsics.imageHeight / 2.0;
+    final cx = intrinsics.width / 2.0;
+    final cy = intrinsics.height / 2.0;
     final fPx = intrinsics.fPx;
     final fPy = intrinsics.fPy;
 

@@ -42,9 +42,8 @@ class MidasDepthDistanceEstimator {
           threads: 2,
         ),
         _intrinsics = CameraIntrinsicsManager(
-          fovHorizontalDeg: 69.0,
-          imageWidth: width,
-          imageHeight: height,
+          width: width,
+          height: height,
         ),
         _extrinsics = CameraExtrinsicsManager(
           heightMeters: 1.20,

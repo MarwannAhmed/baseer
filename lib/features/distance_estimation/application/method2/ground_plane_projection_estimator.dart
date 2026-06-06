@@ -19,9 +19,8 @@ class GroundPlaneProjectionEstimator {
     required int width,
     required int height,
   })  : _intrinsics = CameraIntrinsicsManager(
-          fovHorizontalDeg: 69.0,
-          imageWidth: width,
-          imageHeight: height,
+          width: width,
+          height: height,
         ),
         _extrinsics = CameraExtrinsicsManager(
           heightMeters: 1.20,

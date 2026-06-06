@@ -1,25 +1,36 @@
 import 'dart:math' as math;
-
 import 'package:baseer/features/distance_estimation/domain/distance_estimate.dart';
 import 'package:baseer/features/distance_estimation/domain/object_size_prior.dart';
 
 class FusionUncertaintyEstimator {
+
   const FusionUncertaintyEstimator();
+
+  double calcDistanceStd({
+    required double distance,
+    required double stdF,
+    required double stdObj,
+    required double stdP,
+  }) {
+    final rel = math.sqrt(
+      stdF * stdF + stdObj * stdObj + stdP * stdP,
+    );
+    return distance * rel;
+  }
 
   DistanceEstimate fuse({
     required ObjectSizePrior prior,
     required double detectionConfidence,
-    required double dHeight,
-    required double dWidth,
+    required double heightDist,
+    required double widthDist,
     required double hPx,
     required double wPx,
     required double penalty,
   }) {
-    final wHeight = prior.heightConfidence * penalty * detectionConfidence;
-    final wWidth = prior.widthConfidence * penalty * detectionConfidence;
-    final wSum = wHeight + wWidth;
-
-    if (wSum <= 1e-6) {
+    final heightWeight = prior.heightConfidence * penalty * detectionConfidence;
+    final widthWeight = prior.widthConfidence * penalty * detectionConfidence;
+    final weightSum = heightWeight + widthWeight;
+    if (weightSum <= 1e-6) {
       return const DistanceEstimate(
         dist: null,
         std: null,
@@ -27,30 +38,23 @@ class FusionUncertaintyEstimator {
         error: 'low_confidence',
       );
     }
-
-    final fused = (wHeight * dHeight + wWidth * dWidth) / wSum;
-
-    final sigmaF = 0.03; // 3% focal-length uncertainty
-    final sigmaPixel = 2.0;
-
-    final sigmaHeight = _sigmaDistance(
-      distance: dHeight,
-      sigmaF: sigmaF,
-      sigmaObj: prior.heightStdM / prior.typicalHeightM,
-      sigmaPx: sigmaPixel / hPx,
+    final fused = (heightWeight * heightDist + widthWeight * widthDist) / weightSum;
+    final stdF = 0.03;
+    final stdP = 2.0;
+    final stdH = calcDistanceStd(
+      distance: heightDist,
+      stdF: stdF,
+      stdObj: prior.heightStdM / prior.typicalHeightM,
+      stdP: stdP / hPx,
     );
-
-    final sigmaWidth = _sigmaDistance(
-      distance: dWidth,
-      sigmaF: sigmaF,
-      sigmaObj: prior.widthStdM / prior.typicalWidthM,
-      sigmaPx: sigmaPixel / wPx,
+    final stdW = calcDistanceStd(
+      distance: widthDist,
+      stdF: stdF,
+      stdObj: prior.widthStdM / prior.typicalWidthM,
+      stdP: stdP / wPx,
     );
-
-    final sigmaFused = (wHeight * sigmaHeight + wWidth * sigmaWidth) / wSum;
-    final confidence = math.min(1.0, wSum /
-        (prior.heightConfidence + prior.widthConfidence));
-
+    final sigmaFused = (heightWeight * stdH + widthWeight * stdW) / weightSum;
+    final confidence = math.min(1.0, weightSum / (prior.heightConfidence + prior.widthConfidence));
     return DistanceEstimate(
       dist: fused,
       std: sigmaFused,
@@ -58,15 +62,4 @@ class FusionUncertaintyEstimator {
     );
   }
 
-  double _sigmaDistance({
-    required double distance,
-    required double sigmaF,
-    required double sigmaObj,
-    required double sigmaPx,
-  }) {
-    final rel = math.sqrt(
-      sigmaF * sigmaF + sigmaObj * sigmaObj + sigmaPx * sigmaPx,
-    );
-    return distance * rel;
-  }
 }

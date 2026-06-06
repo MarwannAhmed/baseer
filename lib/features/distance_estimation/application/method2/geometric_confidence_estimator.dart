@@ -121,8 +121,8 @@ class GeometricConfidenceEstimator {
     required double height,
     required double pitch,
   }) {
-    final cx = intrinsics.imageWidth / 2.0;
-    final cy = intrinsics.imageHeight / 2.0;
+    final cx = intrinsics.width / 2.0;
+    final cy = intrinsics.height / 2.0;
     final fPx = intrinsics.fPx;
     final fPy = intrinsics.fPy;
 

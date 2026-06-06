@@ -1,16 +1,19 @@
 import 'package:baseer/features/distance_estimation/domain/object_size_prior.dart';
 
 class DualHypothesisDistance {
-  final double heightMeters;
-  final double widthMeters;
+
+  final double heightDist;
+  final double widthDist;
 
   const DualHypothesisDistance({
-    required this.heightMeters,
-    required this.widthMeters,
+    required this.heightDist,
+    required this.widthDist,
   });
+
 }
 
 class DualHypothesisDistanceCalculator {
+
   const DualHypothesisDistanceCalculator();
 
   DualHypothesisDistance? compute({
@@ -24,8 +27,9 @@ class DualHypothesisDistanceCalculator {
     final dHeight = (fPy * prior.typicalHeightM) / hPx;
     final dWidth = (fPx * prior.typicalWidthM) / wPx;
     return DualHypothesisDistance(
-      heightMeters: dHeight,
-      widthMeters: dWidth,
+      heightDist: dHeight,
+      widthDist: dWidth,
     );
   }
+
 }
