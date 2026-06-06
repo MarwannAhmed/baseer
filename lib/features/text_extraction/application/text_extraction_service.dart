@@ -10,15 +10,15 @@ class TextExtractionService {
   TextExtractionService._(this._extractor);
 
   factory TextExtractionService.onDevice({
-    String detModelPath = 'assets/models/det.onnx',
-    String recModelPath = 'assets/models/rec.onnx',
-    String dictPath     = 'assets/dict/ppocr_keys.txt',
+    String detectionModelPath = 'assets/models/det.onnx',
+    String recognitionModelPath = 'assets/models/rec.onnx',
+    String dictionaryPath     = 'assets/dict/ppocr_keys.txt',
   }) {
     return TextExtractionService._(
       OnDeviceTextExtractor(
-        detModelPath: detModelPath,
-        recModelPath: recModelPath,
-        dictPath: dictPath,
+        detectionModelPath: detectionModelPath,
+        recognitionModelPath: recognitionModelPath,
+        dictionaryPath: dictionaryPath,
       ),
     );
   }

@@ -12,52 +12,29 @@ class ColorResult {
   String toString() => '$colorEn / $colorAr';
 }
 
-// gray world: clamp scale factors so a scene dominated by one colour
-// doesnt crush that channel -- e.g. red wall turns reds into browns
-// tried [0.5, 2.0] once, hues went weird. 0.75-1.50 works
+
 const double _gwClampMin = 0.75;
 const double _gwClampMax = 1.50;
-
-// skip low-chroma pixels before clustering. was 15, lowered to 10 so
-// mildly saturated colours (olive greens, dusty pinks) arent dropped
 const double _chromaFilterThreshold = 10.0;
-
-// if dominant centroid chroma < this, call it neutral (white/gray/black)
-// was 20, lowered to 15 -- pale-but-coloured was getting called gray
 const double _neutralChromaThreshold = 15.0;
-
-const double _whiteLThreshold = 210.0; //L > 210 = white (opencv scale)
+const double _whiteLThreshold = 210.0; //L > 210 = white 
 const double _blackLThreshold = 50.0;  //L < 50  = black
-
-// const double _centerCropRatio = 0.6; // unused here, svm side uses it
-const int    _kmeansK         = 3;
-const int    _kmeansMaxIter   = 20;
-const int    _pixelStride     = 3;
-const int    _minBboxArea     = 400;
-
-// brown = warm hue sector + low chroma + not too bright
-// derived from prototype comparisons:
-//   orange [255,140,0]  -> hue ~65, chroma ~84
-//   brown  [100,60,20]  -> hue ~65, chroma ~33, L ~74
-//   dark red [120,0,0]  -> hue ~37, chroma ~61
-// chroma < 45 cleanly separates brown(33) from dark-red(61) and orange(84)
-// L < 145 keeps sandy/tan out of brown
+const int    _kmeansK = 3;
+const int    _kmeansMaxIter = 20;
+const int    _pixelStride = 3;
+const int    _minBboxArea = 400;
 const double _brownHueMax    = 83.0;
 const double _brownChromaMax = 45.0;
-const double _brownLMax      = 145.0; // darkish on opencv 0-255 scale
+const double _brownLightnessMax = 145.0; 
 
 // pink/red share same hue zone, split by lightness
 const double _pinkLMin = 160.0;
 
-// hue angle boundaries in [0, 360), midpoints between adjacent anchors:
-//   Red [200,0,0] ~37  Orange [255,140,0] ~65  Yellow [230,230,0] ~103
-//   Green [0,180,0] ~135  Blue [0,0,200] ~306  Purple [180,0,180] ~325
-//   Pink [255,130,180] ~355
 const double _hPinkRed      = 16.0;
 const double _hRedOrange    = 51.0;
 const double _hOrangeYellow = 84.0;
 const double _hYellowGreen  = 119.0;
-const double _hGreenBlue    = 220.0; //absorbs cyan too
+const double _hGreenBlue    = 220.0; 
 const double _hBluePurple   = 315.0;
 const double _hPurplePink   = 340.0;
 
@@ -77,11 +54,6 @@ const Map<String, String> _colorArabic = {
 
 const ColorResult _grayFallback = ColorResult(colorEn: 'gray', colorAr: 'رمادي');
 
-// sRGB -> OpenCV LAB, matches cv2.COLOR_BGR2LAB exactly
-//   L_cv = L* * 255/100  -> [0,255]
-//   A_cv = a* + 128      -> [0,255], centre=128
-//   B_cv = b* + 128      -> [0,255], centre=128
-
 double _gammaExpand(double c) =>
     c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4).toDouble();
 
@@ -93,7 +65,6 @@ void _rgbToOpenCvLabInto(int r, int g, int b, Float32List out, int offset) {
   final double gf = _gammaExpand(g / 255.0);
   final double bf = _gammaExpand(b / 255.0);
 
-  // D65 illuminant
   final double x = rf*0.4124564 + gf*0.3575761 + bf*0.1804375;
   final double y = rf*0.2126729 + gf*0.7151522 + bf*0.0721750;
   final double z = rf*0.0193339 + gf*0.1191920 + bf*0.9503041;
@@ -102,12 +73,11 @@ void _rgbToOpenCvLabInto(int r, int g, int b, Float32List out, int offset) {
   final double fy = _labF(y / 1.00000);
   final double fz = _labF(z / 1.08883);
 
-  out[offset    ] = ((116.0*fy - 16.0) * 255.0/100.0).clamp(0.0, 255.0);
+  out[offset] = ((116.0*fy - 16.0) * 255.0/100.0).clamp(0.0, 255.0);
   out[offset + 1] = (500.0*(fx - fy) + 128.0).clamp(0.0, 255.0);
   out[offset + 2] = (200.0*(fy - fz) + 128.0).clamp(0.0, 255.0);
 }
 
-// isolate payload
 class _FrameData {
   final Uint8List rgbaBytes;
   final int width;
@@ -120,14 +90,12 @@ class _FrameData {
   });
 }
 
-// runs in background isolate via compute()
 Float32List _buildLabFrame(_FrameData data) {
   final int w     = data.width;
   final int h     = data.height;
   final int total = w * h;
   final Uint8List src = data.rgbaBytes;
 
-  // gray world: per-channel sums for AWB
   double rSum = 0, gSum = 0, bSum = 0;
   for (int i = 0; i < total; i++) {
     final int base = i * 4;
@@ -139,12 +107,10 @@ Float32List _buildLabFrame(_FrameData data) {
   const double eps = 1e-6;
   final double grayAvg = (rSum + gSum + bSum) / (3.0 * total);
 
-  // clamp so dominant-color scenes dont crush the channel
   final double rScale = (grayAvg / (rSum/total + eps)).clamp(_gwClampMin, _gwClampMax);
   final double gScale = (grayAvg / (gSum/total + eps)).clamp(_gwClampMin, _gwClampMax);
   final double bScale = (grayAvg / (bSum/total + eps)).clamp(_gwClampMin, _gwClampMax);
 
-  //second pass: convert to lab with white-balanced rgb
   final Float32List lab = Float32List(total * 3);
   for (int i = 0; i < total; i++) {
     final int srcBase = i*4;
@@ -190,7 +156,6 @@ class ColorDetector {
     final Float32List pixels = _sampleLabPixels(x1, y1, x2, y2);
     if (pixels.isEmpty) return _fallback();
 
-    // try saturated pixels only; fall back to everthing if too few survive
     Float32List filtered = _filterLowChroma(pixels, pixels.length ~/ 3);
     if (filtered.length ~/ 3 < 10) filtered = pixels;
 
@@ -251,7 +216,7 @@ class ColorDetector {
       final double db = pixels[i*3 + 2] - 128.0;
       if (da*da + db*db >= threshSq) kept++;
     }
-    if (kept == 0) return pixels; //all neutral, let caller decide
+    if (kept == 0) return pixels; 
 
     final Float32List out = Float32List(kept * 3);
     int j = 0;
@@ -271,12 +236,11 @@ class ColorDetector {
   Float32List _dominantLabColor(Float32List pixels, int count) {
     if (count < _kmeansK * 2) return _meanColor(pixels, count);
 
-    final Random rng = Random(0); //fixed seed -- deterministic across frames
+    final Random rng = Random(0); 
     final List<Float32List> centroids = [];
 
     centroids.add(_pixelAt(pixels, rng.nextInt(count)));
 
-    // kmeans++ seeding: weight next seed by distance to nearest existing centroid
     for (int k = 1; k < _kmeansK; k++) {
       final Float32List dists = Float32List(count);
       double total = 0;
@@ -298,11 +262,11 @@ class ColorDetector {
       centroids.add(_pixelAt(pixels, chosen));
     }
 
-    final List<int>    labels = List.filled(count, 0);
-    final List<double> lSum   = List.filled(_kmeansK, 0);
-    final List<double> aSum   = List.filled(_kmeansK, 0);
-    final List<double> bSum   = List.filled(_kmeansK, 0);
-    final List<int>    cnt    = List.filled(_kmeansK, 0);
+    final List<int> labels = List.filled(count, 0);
+    final List<double> lSum = List.filled(_kmeansK, 0);
+    final List<double> aSum = List.filled(_kmeansK, 0);
+    final List<double> bSum = List.filled(_kmeansK, 0);
+    final List<int> cnt = List.filled(_kmeansK, 0);
 
     for (int iter = 0; iter < _kmeansMaxIter; iter++) {
       bool changed = false;
@@ -333,7 +297,6 @@ class ColorDetector {
       }
     }
 
-    //pick largest cluster
     final List<int> sizes = List.filled(_kmeansK, 0);
     for (final l in labels) {sizes[l]++;}
     int best = 0;
@@ -357,19 +320,12 @@ class ColorDetector {
       Float32List.fromList([pixels[i*3], pixels[i*3+1], pixels[i*3+2]]);
 
   double _distSq(Float32List pixels, int i, Float32List centroid) {
-    final double dl = pixels[i*3    ] - centroid[0];
+    final double dl = pixels[i*3] - centroid[0];
     final double da = pixels[i*3 + 1] - centroid[1];
     final double db = pixels[i*3 + 2] - centroid[2];
     return dl*dl + da*da + db*db;
   }
 
-  // replaced old euclidean prototype distance (included L channel, caused dark reds
-  // to match brown) with:
-  //   1. neutral guard -- chroma threshold, unchanged logic, just lower value
-  //   2. brown rule -- warm hue + low chroma + moderate L, checked before hue buckets
-  //      so vivid reds/oranges are never pulled toward brown
-  //   3. hue bucketing -- atan2(b*,a*) angle at computed midpoints, no L contamination
-  //   4. pink/red split -- same hue zone, split by lightness threshold
   ColorResult _labToColorName(double L, double rawA, double rawB) {
     final double A = rawA - 128.0;
     final double B = rawB - 128.0;
@@ -384,8 +340,6 @@ class ColorDetector {
     double h = atan2(B, A) * 180.0 / pi;
     if (h < 0) h += 360.0;
 
-    // brown check first -- dark desaturated red would otherwise slip
-    // through as "red" or "orange" in hue buckets
     if (_isBrownCandidate(h, chroma, L)) {
       return const ColorResult(colorEn: 'brown', colorAr: 'بني');
     }
@@ -395,17 +349,17 @@ class ColorDetector {
     if (_isPinkRedHue(h)) {
       name = L >= _pinkLMin ? 'pink' : 'red';
     } else if (h < _hRedOrange) {
-      name = 'red'; //[16, 51)
+      name = 'red'; 
     } else if (h < _hOrangeYellow) {
-      name = 'orange'; //[51, 84)
+      name = 'orange';
     } else if (h < _hYellowGreen) {
-      name = 'yellow'; //[84, 119)
+      name = 'yellow';
     } else if (h < _hGreenBlue) {
-      name = 'green'; //[119, 220) -- cyan lands here too
+      name = 'green'; 
     } else if (h < _hBluePurple) {
-      name = 'blue'; //[220, 315)
+      name = 'blue'; 
     } else {
-      name = 'purple'; //[315, 340)
+      name = 'purple';
     }
 
     return ColorResult(
@@ -415,7 +369,7 @@ class ColorDetector {
   }
 
   bool _isBrownCandidate(double hue, double chroma, double lightness) =>
-      hue < _brownHueMax && chroma < _brownChromaMax && lightness < _brownLMax;
+      hue < _brownHueMax && chroma < _brownChromaMax && lightness < _brownLightnessMax;
 
   bool _isPinkRedHue(double hue) => hue >= _hPurplePink || hue < _hPinkRed;
 }

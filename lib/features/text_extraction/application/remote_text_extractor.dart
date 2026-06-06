@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:image/image.dart' as img;
-
 import '../domain/text_extractor_interface.dart';
 
 class RemoteTextExtractor implements TextExtractorInterface {
