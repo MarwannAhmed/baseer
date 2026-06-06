@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 
 import 'package:baseer/features/analysis/domain/detected_object.dart';
@@ -11,6 +12,10 @@ class ObjectDetectionService {
   final ObjectDetector _detector;
 
   ObjectDetectionService._(this._detector);
+
+  @visibleForTesting
+  factory ObjectDetectionService.fromDetector(ObjectDetector detector) =>
+      ObjectDetectionService._(detector);
 
   factory ObjectDetectionService.onDevice({
     required List<String> classNames,

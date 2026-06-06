@@ -12,6 +12,10 @@ import 'package:baseer/features/analysis/domain/analysis_result.dart';
 /// Fix vs original: import paths now use package-level imports instead of
 /// relative paths that were pointing to non-existent folder locations.
 class AnalysisService {
+  final http.Client _client;
+
+  AnalysisService({http.Client? client}) : _client = client ?? http.Client();
+
   /// [imagePath] – file-system path obtained from [CameraService.takePicture]
   /// [command]   – raw Arabic/English command string from STT
   ///
@@ -25,7 +29,7 @@ class AnalysisService {
       ..files.add(await http.MultipartFile.fromPath('file', imagePath));
 
     final streamedResponse =
-        await request.send().timeout(ApiConstants.requestTimeout);
+        await _client.send(request).timeout(ApiConstants.requestTimeout);
 
     if (streamedResponse.statusCode != 200) {
       throw AnalysisException(

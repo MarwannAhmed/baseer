@@ -71,7 +71,7 @@ DETECTION_SOURCE=ondevice
 # On-device model path for object detection 
 # assets/ml/yolov8_int8.onnx → on-device optimised YOLOv8n ONNX model
 # assets/ml/hybrid_yolov8n_mobilenet.onnx → on-device hybrid YOLOv8n & MobileNetV2 ONNX model
-DETECTION_SOURCE=assets/ml/yolov8n_int8.onnx
+DETECTION_MODEL=assets/ml/yolov8n_int8.onnx
 
 # Inference source for text extraction (نص mode)
 # ondevice → on-device OCR ONNX model

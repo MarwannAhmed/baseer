@@ -1,12 +1,9 @@
-/// A single object returned by the FastAPI `/analyze` endpoint.
-/// colorEn and colorAr are filled in on-device by the colour pipeline
-/// after the backend returns bbox coordinates.
 class DetectedObject {
   final String label;
   final double confidence;
-  final Map<String, int> bbox; // {x1, y1, x2, y2}
-  final Map<String, int> center; // {x, y}
-  final Map<String, int> size; // {width, height}
+  final Map<String, int> bbox;
+  final Map<String, int> center; 
+  final Map<String, int> size;
   final String colorEn;
   final String colorAr;
   final int distanceCm;

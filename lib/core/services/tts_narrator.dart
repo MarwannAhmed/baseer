@@ -1,13 +1,17 @@
 // lib/core/services/tts_narrator.dart
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import '../app_settings.dart';
 
 class TtsNarrator {
-  TtsNarrator._();
+  TtsNarrator._({FlutterTts? tts}) : _tts = tts ?? FlutterTts();
   static final TtsNarrator instance = TtsNarrator._();
 
-  final FlutterTts _tts = FlutterTts();
+  @visibleForTesting
+  static TtsNarrator forTest({FlutterTts? tts}) => TtsNarrator._(tts: tts);
+
+  final FlutterTts _tts;
   bool _isSpeaking = false;
   bool _inited = false;
 

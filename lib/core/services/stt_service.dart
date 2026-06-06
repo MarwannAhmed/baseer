@@ -4,7 +4,9 @@ import 'package:speech_to_text/speech_to_text.dart';
 import '../app_settings.dart';
 
 class STTService {
-  final SpeechToText _speech = SpeechToText();
+  final SpeechToText _speech;
+
+  STTService({SpeechToText? speech}) : _speech = speech ?? SpeechToText();
   String localeId  = 'ar';
   bool   available = false;
 

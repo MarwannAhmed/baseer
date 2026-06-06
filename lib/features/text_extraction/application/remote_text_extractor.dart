@@ -6,8 +6,10 @@ import '../domain/text_extractor_interface.dart';
 class RemoteTextExtractor implements TextExtractorInterface {
   final String baseUrl;
   final String command;
+  final http.Client _client;
 
-  RemoteTextExtractor({required this.baseUrl, this.command = 'نص'});
+  RemoteTextExtractor({required this.baseUrl, this.command = 'نص', http.Client? client})
+      : _client = client ?? http.Client();
 
   @override
   Future<void> init() async {}
@@ -22,7 +24,7 @@ class RemoteTextExtractor implements TextExtractorInterface {
         http.MultipartFile.fromBytes('file', jpegBytes, filename: 'image.jpg'),
       );
 
-    final streamed = await request.send().timeout(const Duration(seconds: 60));
+    final streamed = await _client.send(request).timeout(const Duration(seconds: 60));
     final body = await streamed.stream.bytesToString();
 
     if (streamed.statusCode != 200) return '';

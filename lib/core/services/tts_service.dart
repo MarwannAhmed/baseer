@@ -7,6 +7,7 @@
 // awaitSpeakCompletion(true) makes speak() block until the utterance is done.
 // This prevents the "I'm listening" announcement from overlapping with STT.
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import '../app_settings.dart';
 
@@ -14,10 +15,13 @@ class TTSService {
   // ── Singleton ───────────────────────────────────────────────────────────────
   static final TTSService _i = TTSService._();
   factory TTSService() => _i;
-  TTSService._();
+  TTSService._({FlutterTts? tts}) : _tts = tts ?? FlutterTts();
+
+  @visibleForTesting
+  factory TTSService.forTest({FlutterTts? tts}) => TTSService._(tts: tts);
 
   // ── State ───────────────────────────────────────────────────────────────────
-  final FlutterTts _tts        = FlutterTts();
+  final FlutterTts _tts;
   bool             _isSpeaking = false;
   bool             _inited     = false;
 

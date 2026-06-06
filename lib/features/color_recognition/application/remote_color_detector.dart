@@ -21,8 +21,10 @@ const Map<String, String> _colorArabic = {
 
 class RemoteColorDetector {
   final String baseUrl;
+  final http.Client _client;
 
-  RemoteColorDetector({required this.baseUrl});
+  RemoteColorDetector({required this.baseUrl, http.Client? client})
+      : _client = client ?? http.Client();
 
   Future<UnifiedColorResult> detect(img.Image image) async {
     final List<int> jpegBytes = img.encodeJpg(image, quality: 85);
@@ -35,7 +37,7 @@ class RemoteColorDetector {
 
     debugPrint('🟡 RemoteColorDetector: sending to $baseUrl/analyze');
 
-    final streamed = await request.send().timeout(const Duration(seconds: 30));
+    final streamed = await _client.send(request).timeout(const Duration(seconds: 30));
     final body = await streamed.stream.bytesToString();
 
     debugPrint('🟡 RemoteColorDetector: status ${streamed.statusCode}: $body');

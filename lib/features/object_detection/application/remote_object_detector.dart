@@ -7,8 +7,10 @@ import '../domain/object_detector.dart';
 
 class RemoteObjectDetector implements ObjectDetector {
   final String baseUrl;
+  final http.Client _client;
 
-  RemoteObjectDetector({required this.baseUrl});
+  RemoteObjectDetector({required this.baseUrl, http.Client? client})
+      : _client = client ?? http.Client();
 
   @override
   Future<void> init() async {}
@@ -21,7 +23,7 @@ class RemoteObjectDetector implements ObjectDetector {
       ..files.add(
         http.MultipartFile.fromBytes('file', jpegBytes, filename: 'image.jpg'),
       );
-    final streamedResponse = await request.send().timeout(
+    final streamedResponse = await _client.send(request).timeout(
       const Duration(seconds: 30),
     );
     if (streamedResponse.statusCode != 200) {
