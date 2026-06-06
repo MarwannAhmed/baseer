@@ -66,6 +66,7 @@ flutter:
 
   assets:
     - .env
+    - assets/imgs/
     - assets/ml/
     - assets/ml/midas.tflite
     - assets/models/det.onnx

@@ -27,6 +27,14 @@ class TextExtractionService {
     return TextExtractionService._(RemoteTextExtractor(baseUrl: baseUrl));
   }
 
+  factory TextExtractionService.remoteOcr({required String baseUrl}) {
+    return TextExtractionService._(RemoteTextExtractor(baseUrl: baseUrl, command: 'نصا'));
+  }
+
+  factory TextExtractionService.remoteOcrAr({required String baseUrl}) {
+    return TextExtractionService._(RemoteTextExtractor(baseUrl: baseUrl, command: 'نصعر'));
+  }
+
   Future<void> init() => _extractor.init();
   Future<String> extractText(img.Image image) => _extractor.extract(image);
   void dispose() => _extractor.dispose();
