@@ -10,7 +10,7 @@ class FocalLengthRefiner {
   void consider({
     required double detectionConfidence,
     required ObjectSizePrior prior,
-    required double distanceMeters,
+    required double dist,
     required double heightPx,
     required bool isClipped,
     required CameraIntrinsicsManager intrinsics,
@@ -20,7 +20,7 @@ class FocalLengthRefiner {
     if (prior.heightConfidence <= 0.80) return;
     if (heightPx <= 0) return;
 
-    final implied = (distanceMeters * heightPx) / prior.typicalHeightM;
+    final implied = (dist * heightPx) / prior.typicalHeightM;
     if (implied <= 0) return;
 
     _buffer.add(implied);

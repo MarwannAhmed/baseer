@@ -7,11 +7,11 @@ import 'package:baseer/features/distance_estimation/application/method2/ray_grou
 
 class GeometricConfidenceResult {
   final double confidence;
-  final double? sigmaMeters;
+  final double? std;
 
   const GeometricConfidenceResult({
     required this.confidence,
-    required this.sigmaMeters,
+    required this.std,
   });
 }
 
@@ -36,7 +36,7 @@ class GeometricConfidenceEstimator {
         intersection.rayZWorld == null) {
       return const GeometricConfidenceResult(
         confidence: 0.0,
-        sigmaMeters: null,
+        std: null,
       );
     }
 
@@ -48,7 +48,7 @@ class GeometricConfidenceEstimator {
     final angleDeg = angleRad * 180.0 / math.pi;
     final confidence = _angleToConfidence(angleDeg);
 
-    final sigmaMeters = _estimateSigma(
+    final std = _estimateSigma(
       footPoint: footPoint,
       intrinsics: intrinsics,
       extrinsics: extrinsics,
@@ -56,7 +56,7 @@ class GeometricConfidenceEstimator {
 
     return GeometricConfidenceResult(
       confidence: confidence,
-      sigmaMeters: sigmaMeters,
+      std: std,
     );
   }
 

@@ -1,13 +1,15 @@
 class DistanceEstimate {
-  final double? distanceMeters;
-  final double? sigmaMeters;
+
+  final double? dist;
+  final double? std;
   final double confidence;
   final String? error;
 
   const DistanceEstimate({
-    required this.distanceMeters,
-    required this.sigmaMeters,
+    required this.dist,
+    required this.std,
     required this.confidence,
     this.error,
   });
+
 }

@@ -1,4 +1,5 @@
 class ObjectSizePrior {
+
   final String className;
   final double typicalHeightM;
   final double typicalWidthM;
@@ -16,4 +17,5 @@ class ObjectSizePrior {
     required this.heightConfidence,
     required this.widthConfidence,
   });
+
 }

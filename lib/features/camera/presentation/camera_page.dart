@@ -78,8 +78,7 @@ class _LiveCameraPageState extends State<LiveCameraPage>
               dotenv.env['DETECTION_MODEL'] ?? 'assets/ml/yolov8n_int8.onnx',
         );
 
-  final DistanceEstimationService _distanceEstimator =
-      DistanceEstimationService.fromEnv();
+  final DistanceEstimationService _distanceEstimator = DistanceEstimationService();
   // ── Silent input / mode overlay ──
   bool _showSilentInput = false;
   final TextEditingController _silentInputCtrl = TextEditingController();
@@ -349,8 +348,8 @@ class _LiveCameraPageState extends State<LiveCameraPage>
 
       final objectsWithDistance = await _distanceEstimator.estimateForObjects(
         objects: coloredObjects,
-        imageWidth: frame.width,
-        imageHeight: frame.height,
+        width: frame.width,
+        height: frame.height,
         frame: frame,
       );
 

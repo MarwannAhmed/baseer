@@ -21,8 +21,8 @@ class FusionUncertaintyEstimator {
 
     if (wSum <= 1e-6) {
       return const DistanceEstimate(
-        distanceMeters: null,
-        sigmaMeters: null,
+        dist: null,
+        std: null,
         confidence: 0.0,
         error: 'low_confidence',
       );
@@ -52,8 +52,8 @@ class FusionUncertaintyEstimator {
         (prior.heightConfidence + prior.widthConfidence));
 
     return DistanceEstimate(
-      distanceMeters: fused,
-      sigmaMeters: sigmaFused,
+      dist: fused,
+      std: sigmaFused,
       confidence: confidence,
     );
   }

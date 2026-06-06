@@ -16,19 +16,16 @@ class GroundPlaneProjectionEstimator {
   static const double _maxDistanceM = 50.0;
 
   GroundPlaneProjectionEstimator({
-    required double fovHorizontalDeg,
-    required int imageWidth,
-    required int imageHeight,
-    required double cameraHeightM,
-    required double pitchDeg,
+    required int width,
+    required int height,
   })  : _intrinsics = CameraIntrinsicsManager(
-          fovHorizontalDeg: fovHorizontalDeg,
-          imageWidth: imageWidth,
-          imageHeight: imageHeight,
+          fovHorizontalDeg: 69.0,
+          imageWidth: width,
+          imageHeight: height,
         ),
         _extrinsics = CameraExtrinsicsManager(
-          heightMeters: cameraHeightM,
-          pitchDeg: pitchDeg,
+          heightMeters: 1.20,
+          pitchDeg: 15.0,
         ),
         _footSelector = const FootPointSelector(),
         _intersectionEngine = const RayGroundIntersectionEngine(),
@@ -39,12 +36,12 @@ class GroundPlaneProjectionEstimator {
 
   List<DetectedObject> estimateForObjects({
     required List<DetectedObject> objects,
-    required int imageWidth,
-    required int imageHeight,
+    required int width,
+    required int height,
     required dynamic frame,
   }) {
     if (objects.isEmpty) return objects;
-    _intrinsics.updateImageSize(imageWidth, imageHeight);
+    _intrinsics.updateImageSize(width, height);
 
     final updated = <DetectedObject>[];
     for (final object in objects) {
@@ -59,7 +56,7 @@ class GroundPlaneProjectionEstimator {
         y1: y1,
         x2: x2,
         y2: y2,
-        imageHeight: imageHeight,
+        imageHeight: height,
       );
 
       final intersection = _intersectionEngine.intersect(

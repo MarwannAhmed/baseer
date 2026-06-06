@@ -34,30 +34,21 @@ class MidasDepthDistanceEstimator {
   static const double _minRelDepth = 1e-6;
 
   MidasDepthDistanceEstimator({
-    required String modelAssetPath,
-    required int modelInputSize,
-    required int threads,
-    required double fovHorizontalDeg,
-    required int imageWidth,
-    required int imageHeight,
-    required double cameraHeightM,
-    required double pitchDeg,
-    required double emaAlpha,
-    required double groundStartRatio,
-    required int groundStridePx,
+    required int width,
+    required int height,
   })  : _engine = MidasDepthEngine(
-          assetPath: modelAssetPath,
-          inputSize: modelInputSize,
-          threads: threads,
+          assetPath: "assets/ml/midas.tflite",
+          inputSize: 256,
+          threads: 2,
         ),
         _intrinsics = CameraIntrinsicsManager(
-          fovHorizontalDeg: fovHorizontalDeg,
-          imageWidth: imageWidth,
-          imageHeight: imageHeight,
+          fovHorizontalDeg: 69.0,
+          imageWidth: width,
+          imageHeight: height,
         ),
         _extrinsics = CameraExtrinsicsManager(
-          heightMeters: cameraHeightM,
-          pitchDeg: pitchDeg,
+          heightMeters: 1.20,
+          pitchDeg: 15,
         ),
         _intersectionEngine = const RayGroundIntersectionEngine(),
         _confidenceEstimator = const GeometricConfidenceEstimator(
@@ -66,19 +57,18 @@ class MidasDepthDistanceEstimator {
         ),
         _priorDatabase = ObjectSizePriorDatabase.coco80(),
         _pinholeEstimator = PinholePriorDistanceEstimator(
-          fovHorizontalDeg: fovHorizontalDeg,
-          imageWidth: imageWidth,
-          imageHeight: imageHeight,
+          width: width,
+          height: height,
         ),
         _fuser = const WeightedMedianFuser(),
-        _emaAlpha = emaAlpha,
-        _groundStartRatio = groundStartRatio,
-        _groundStridePx = groundStridePx;
+        _emaAlpha = 0.3,
+        _groundStartRatio = 0.65,
+        _groundStridePx = 32;
 
   Future<List<DetectedObject>> estimateForObjects({
     required List<DetectedObject> objects,
-    required int imageWidth,
-    required int imageHeight,
+    required int width,
+    required int height,
     required dynamic frame,
   }) async {
     if (objects.isEmpty) return objects;
@@ -87,7 +77,7 @@ class MidasDepthDistanceEstimator {
       return objects.map((o) => o.copyWithDistance(distanceCm: -1)).toList();
     }
 
-    _intrinsics.updateImageSize(imageWidth, imageHeight);
+    _intrinsics.updateImageSize(width, height);
 
     final depthMap = await _engine.run(frame);
     _logDepthStats(depthMap);
@@ -97,16 +87,16 @@ class MidasDepthDistanceEstimator {
       samples: scaleSamples,
       depthMap: depthMap,
       objects: objects,
-      imageWidth: imageWidth,
-      imageHeight: imageHeight,
+      imageWidth: width,
+      imageHeight: height,
     );
 
     _collectPriorSamples(
       samples: scaleSamples,
       depthMap: depthMap,
       objects: objects,
-      imageWidth: imageWidth,
-      imageHeight: imageHeight,
+      imageWidth: width,
+      imageHeight: height,
     );
 
     debugPrint('[MiDaS] Scale samples: ${scaleSamples.length}');
@@ -133,8 +123,8 @@ class MidasDepthDistanceEstimator {
       final relDepth = _sampleObjectDepth(
         depthMap: depthMap,
         object: object,
-        imageWidth: imageWidth,
-        imageHeight: imageHeight,
+        imageWidth: width,
+        imageHeight: height,
       );
 
       if (relDepth == null || relDepth <= _minRelDepth) {
@@ -143,10 +133,10 @@ class MidasDepthDistanceEstimator {
         continue;
       }
 
-      final distanceMeters = (scale / relDepth).clamp(_minDistanceM, _maxDistanceM);
-      debugPrint('[MiDaS] ${object.label}: rel=$relDepth -> ${distanceMeters.toStringAsFixed(2)}m');
+      final dist = (scale / relDepth).clamp(_minDistanceM, _maxDistanceM);
+      debugPrint('[MiDaS] ${object.label}: rel=$relDepth -> ${dist.toStringAsFixed(2)}m');
       updated.add(
-        object.copyWithDistance(distanceCm: (distanceMeters * 100).round()),
+        object.copyWithDistance(distanceCm: (dist * 100).round()),
       );
     }
 
@@ -233,8 +223,8 @@ class MidasDepthDistanceEstimator {
     var added = 0;
     final pinholeObjects = _pinholeEstimator.estimateForObjects(
       objects: objects,
-      imageWidth: imageWidth,
-      imageHeight: imageHeight,
+      width: imageWidth,
+      height: imageHeight,
       frame: null,
     );
 

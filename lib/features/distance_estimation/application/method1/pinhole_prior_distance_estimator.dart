@@ -19,14 +19,13 @@ class PinholePriorDistanceEstimator {
   static const double _minBboxPixels = 10.0;
 
   PinholePriorDistanceEstimator({
-    required double fovHorizontalDeg,
-    required int imageWidth,
-    required int imageHeight,
+    required int width,
+    required int height,
   })  : _database = ObjectSizePriorDatabase.coco80(),
         _intrinsics = CameraIntrinsicsManager(
-          fovHorizontalDeg: fovHorizontalDeg,
-          imageWidth: imageWidth,
-          imageHeight: imageHeight,
+          fovHorizontalDeg: 69.0,
+          imageWidth: width,
+          imageHeight: height,
         ),
         _dualCalculator = const DualHypothesisDistanceCalculator(),
         _aspectAnalyzer = const AspectRatioDeviationAnalyzer(),
@@ -35,13 +34,13 @@ class PinholePriorDistanceEstimator {
 
   List<DetectedObject> estimateForObjects({
     required List<DetectedObject> objects,
-    required int imageWidth,
-    required int imageHeight,
+    required int width,
+    required int height,
     required dynamic frame,
   }) {
     if (objects.isEmpty) return objects;
 
-    _intrinsics.updateImageSize(imageWidth, imageHeight);
+    _intrinsics.updateImageSize(width, height);
 
     final List<DetectedObject> updated = [];
     for (final object in objects) {
@@ -80,8 +79,8 @@ class PinholePriorDistanceEstimator {
         y1: y1,
         x2: x2,
         y2: y2,
-        imageWidth: imageWidth,
-        imageHeight: imageHeight,
+        imageWidth: width,
+        imageHeight: height,
       );
 
       final fused = _fusionEstimator.fuse(
@@ -94,19 +93,19 @@ class PinholePriorDistanceEstimator {
         penalty: penalty.penalty,
       );
 
-      final distanceMeters = fused.distanceMeters;
-      if (distanceMeters == null || distanceMeters.isNaN) {
+      final dist = fused.dist;
+      if (dist == null || dist.isNaN) {
         updated.add(object.copyWithDistance(distanceCm: -1));
         continue;
       }
 
-      final clamped = distanceMeters.clamp(_minDistanceM, _maxDistanceM);
+      final clamped = dist.clamp(_minDistanceM, _maxDistanceM);
       final distanceCm = (clamped * 100).round();
 
       _focalRefiner.consider(
         detectionConfidence: object.confidence,
         prior: prior,
-        distanceMeters: clamped,
+        dist: clamped,
         heightPx: hPx,
         isClipped: penalty.isClipped,
         intrinsics: _intrinsics,
