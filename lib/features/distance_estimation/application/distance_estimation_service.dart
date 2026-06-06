@@ -5,6 +5,7 @@ import 'package:baseer/features/distance_estimation/application/method2/ground_p
 import 'package:baseer/features/distance_estimation/application/method3/midas_depth_distance_estimator.dart';
 
 class DistanceEstimationService {
+
   final int method;
   PinholePriorDistanceEstimator? method1;
   GroundPlaneProjectionEstimator? method2;
@@ -63,4 +64,5 @@ class DistanceEstimationService {
       frame: frame,
     );
   }
+
 }
