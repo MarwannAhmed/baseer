@@ -1,24 +1,23 @@
 import 'package:image/image.dart' as img;
-
 import '../domain/text_extractor_interface.dart';
 import 'text_extractor.dart';
 
 class OnDeviceTextExtractor implements TextExtractorInterface {
-  final String detModelPath;
-  final String recModelPath;
-  final String dictPath;
+  final String detectionModelPath;
+  final String recognitionModelPath;
+  final String dictionaryPath;
 
   OnDeviceTextExtractor({
-    this.detModelPath = 'assets/models/det.onnx',
-    this.recModelPath = 'assets/models/rec.onnx',
-    this.dictPath     = 'assets/dict/ppocr_keys.txt',
+    this.detectionModelPath = 'assets/models/det.onnx',
+    this.recognitionModelPath = 'assets/models/rec.onnx',
+    this.dictionaryPath     = 'assets/dict/ppocr_keys.txt',
   });
 
   @override
   Future<void> init() => TextExtractor.initialize(
-        detModelPath: detModelPath,
-        recModelPath: recModelPath,
-        dictPath: dictPath,
+        detModelPath: detectionModelPath,
+        recModelPath: recognitionModelPath,
+        dictPath: dictionaryPath,
       );
 
   @override

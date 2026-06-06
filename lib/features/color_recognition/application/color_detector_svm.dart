@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:math';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:image/image.dart' as img;
@@ -14,7 +13,6 @@ class SvmColorResult {
   String toString() => '$colorEn / $colorAr';
 }
 
-// keep in sync with color_detector.dart
 const double _chromaFilterThreshold  = 10.0;
 const double _neutralChromaThreshold = 15.0;
 const double _whiteLThreshold        = 210.0;
@@ -39,7 +37,6 @@ const Map<String, String> _colorArabic = {
   'black':  'أسود',
 };
 
-// same gamma/lab math as color_detector.dart
 double _gammaExpand(double c) =>
     c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4).toDouble();
 double _labF(double t) =>
@@ -67,8 +64,6 @@ class _SvmFrameData {
   const _SvmFrameData({required this.rgbaBytes, required this.width, required this.height});
 }
 
-// no AWB here -- applying it to a single-color crop shifts the dominant hue toward gray
-// which destroys the color signal. train_and_eval.py extract_dominant_lab() does the same
 Float32List _buildSvmLabFrame(_SvmFrameData data) {
   final int total = data.width * data.height;
   final Uint8List src = data.rgbaBytes;
@@ -107,8 +102,6 @@ class SvmColorClassifier {
 
   bool get isReady => _session != null && _labels != null;
 
-  // feature vector [L, rawA, rawB, chroma, hue] -- matches train_and_eval.py make_feature()
-  // rawA/rawB are opencv-scale (0-255, centred at 128), NOT shifted to a*/b*
   String? classify(double L, double rawA, double rawB) {
     if (!isReady) return null;
     final double A      = rawA - 128.0;
@@ -121,7 +114,6 @@ class SvmColorClassifier {
       final runOptions = OrtRunOptions();
       final List<OrtValue?> outputs = _session!.run(runOptions, {_session!.inputNames.first: input});
 
-      // native runtime can return a few diferent output shapes, handle all of them
       int idx = 0;
       try {
         final dynamic v0 = outputs[0]!.value;
@@ -165,7 +157,6 @@ class SvmColorClassifier {
   }
 }
 
-// same public API as ColorDetector
 class ColorDetectorSvm {
   Float32List? _labFrame;
   int _frameWidth  = 0;
@@ -191,7 +182,6 @@ class ColorDetectorSvm {
     if (x2 <= x1 || y2 <= y1) return _fallback();
     if ((x2-x1)*(y2-y1) < _minBboxArea) return _fallback();
 
-    // center crop to reduce background bleed into the bbox
     final int bw = x2-x1, bh = y2-y1;
     final int dx = (bw*(1.0-_centerCropRatio)/2.0).round();
     final int dy = (bh*(1.0-_centerCropRatio)/2.0).round();
@@ -245,7 +235,6 @@ class ColorDetectorSvm {
     final double chroma = sqrt(A*A + B*B);
     debugPrint('[SVM] L=$L A=$rawA B=$rawB chroma=$chroma');
 
-    // neutral guard -- same thresholds as color_detector.dart
     if (chroma < _neutralChromaThreshold) {
       if (L > _whiteLThreshold) return const SvmColorResult(colorEn: 'white', colorAr: 'أبيض');
       if (L < _blackLThreshold) return const SvmColorResult(colorEn: 'black', colorAr: 'أسود');

@@ -64,13 +64,16 @@ class _LiveCameraPageState extends State<LiveCameraPage>
     );
   })();
 
-  // Controlled by TEXT_SOURCE in .env: 'remote' | 'ondevice'
-  final TextExtractionService _textExtractor =
-      (dotenv.env['TEXT_SOURCE']?.toLowerCase() == 'remote')
-      ? TextExtractionService.remote(
-          baseUrl: dotenv.env['BASE_URI'] ?? 'https://baseer-backend-crf6g8gscthna7d5.uaenorth-01.azurewebsites.net',
-        )
-      : TextExtractionService.onDevice();
+  // Controlled by TEXT_SOURCE in .env: 'remote' | 'remote_ocr' | 'remote_ocr_ar' | 'ondevice'
+  final TextExtractionService _textExtractor = () {
+    final baseUrl = dotenv.env['BASE_URI'] ?? 'https://baseer-backend-crf6g8gscthna7d5.uaenorth-01.azurewebsites.net';
+    return switch (dotenv.env['TEXT_SOURCE']?.toLowerCase()) {
+      'remote'        => TextExtractionService.remote(baseUrl: baseUrl),
+      'remote_ocr'    => TextExtractionService.remoteOcr(baseUrl: baseUrl),
+      'remote_ocr_ar' => TextExtractionService.remoteOcrAr(baseUrl: baseUrl),
+      _               => TextExtractionService.onDevice(),
+    };
+  }();
 
   // Controlled by DETECTION_SOURCE in .env: 'remote' | 'ondevice'
   final ObjectDetectionService _objectDetector =

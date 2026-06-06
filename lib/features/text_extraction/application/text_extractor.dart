@@ -13,10 +13,10 @@ class _Box {
   double get bh => y2 - y1;
 }
 
-class _OcrResult {
+class _OCRResult {
   final _Box   box;
   final String text;
-  const _OcrResult(this.box, this.text);
+  const _OCRResult(this.box, this.text);
 }
 
 class TextExtractor {
@@ -24,14 +24,13 @@ class TextExtractor {
   static OrtSession? _recSession;
   static List<String> _dict          = [];
   static bool         _isInitialized = false;
-
   static const int    _detMaxSide  = 960;
   static const int    _recHeight   = 48;
   static const int    _recMaxWidth = 320;
   static const double _dbThresh    = 0.3;
   static const double _dbBoxThresh = 0.5;
   static const double _unclipRatio = 1.5;
-  static const double _lineThresh  = 0.6;
+  static const double _lineThreshold  = 0.6;
   static const int    _minArea     = 10;
 
   static const List<double> _detMean = [0.485, 0.456, 0.406];
@@ -74,7 +73,7 @@ class TextExtractor {
 
     final boxes = _detect(image);
 
-    final results = <_OcrResult>[];
+    final results = <_OCRResult>[];
 
     for (int i = 0; i < boxes.length; i++) {
       final box = boxes[i];
@@ -87,7 +86,7 @@ class TextExtractor {
       
       final text = _recognize(crop);
       if (text.isNotEmpty) {
-        results.add(_OcrResult(box, text));
+        results.add(_OCRResult(box, text));
       }
     }
 
@@ -271,14 +270,14 @@ class TextExtractor {
     return imageTensor;
   }
 
-  static String _assembleLines(List<_OcrResult> results) {
+  static String _assembleLines(List<_OCRResult> results) {
     if (results.isEmpty) return '';
 
     results.sort((a, b) => a.box.cy.compareTo(b.box.cy));
 
     final avgH      = results.map((r) => r.box.bh).reduce((a, b) => a + b) / results.length;
-    final threshold = avgH * _lineThresh;
-    final lines     = <List<_OcrResult>>[[results.first]];
+    final threshold = avgH * _lineThreshold;
+    final lines     = <List<_OCRResult>>[[results.first]];
 
     for (var i = 1; i < results.length; i++) {
       final last   = lines.last;

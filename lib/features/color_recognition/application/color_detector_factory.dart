@@ -1,20 +1,17 @@
 import 'package:image/image.dart' as img;
-
 import 'package:baseer/features/analysis/domain/detected_object.dart';
 import 'package:baseer/features/color_recognition/application/color_detector.dart';
 import 'package:baseer/features/color_recognition/application/color_detector_svm.dart';
 import 'package:baseer/features/color_recognition/application/remote_color_detector.dart';
 
 enum ColorDetectorMode {
-  ruleBased, // original rule-based, no deps, always works out of the box
+  ruleBased, // original rule-based
   svm,       // onnx svm -- needs assets/ml/ and the onnxruntime package
   backend,   // remote HTTP backend at BASE_URI
 }
 
 class ColorDetectorFactory {
   final ColorDetectorMode mode;
-
-  // both held so we dont reinit on every mode switch
   final ColorDetector    _ruleBased = ColorDetector();
   final ColorDetectorSvm _svm       = ColorDetectorSvm();
   RemoteColorDetector?   _remote;
@@ -41,8 +38,8 @@ class ColorDetectorFactory {
   UnifiedColorResult detect(int x1, int y1, int x2, int y2) {
     return switch (mode) {
       ColorDetectorMode.ruleBased => _ruleBased.detect(x1, y1, x2, y2).toUnified(),
-      ColorDetectorMode.svm       => _svm.detect(x1, y1, x2, y2).toUnified(),
-      ColorDetectorMode.backend   => _cachedRemoteResult ??
+      ColorDetectorMode.svm => _svm.detect(x1, y1, x2, y2).toUnified(),
+      ColorDetectorMode.backend => _cachedRemoteResult ??
           const UnifiedColorResult(colorEn: 'unknown', colorAr: 'غير معروف'),
     };
   }
@@ -74,7 +71,6 @@ class ColorDetectorFactory {
   }
 }
 
-// common return type so callers dont need to import both detector files
 class UnifiedColorResult {
   final String colorEn;
   final String colorAr;
