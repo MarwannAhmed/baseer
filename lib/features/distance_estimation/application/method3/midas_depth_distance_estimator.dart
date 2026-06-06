@@ -45,15 +45,9 @@ class MidasDepthDistanceEstimator {
           width: width,
           height: height,
         ),
-        _extrinsics = CameraExtrinsicsManager(
-          heightMeters: 1.20,
-          pitchDeg: 15,
-        ),
+        _extrinsics = CameraExtrinsicsManager(),
         _intersectionEngine = const RayGroundIntersectionEngine(),
-        _confidenceEstimator = const GeometricConfidenceEstimator(
-          sigmaHeightMeters: 0.05,
-          sigmaPitchDeg: 2.0,
-        ),
+        _confidenceEstimator = const GeometricConfidenceEstimator(),
         _priorDatabase = ObjectSizePriorDatabase.coco80(),
         _pinholeEstimator = PinholePriorDistanceEstimator(
           width: width,

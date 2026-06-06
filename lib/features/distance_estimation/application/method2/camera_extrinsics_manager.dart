@@ -1,16 +1,14 @@
 import 'dart:math' as math;
 
 class CameraExtrinsicsManager {
-  double heightMeters;
-  double pitchDeg;
-  double rollDeg;
 
-  CameraExtrinsicsManager({
-    required this.heightMeters,
-    required this.pitchDeg,
-    this.rollDeg = 0.0,
-  });
+  double hCam;
+  double pitch;
 
-  double get pitchRad => pitchDeg * math.pi / 180.0;
-  double get rollRad => rollDeg * math.pi / 180.0;
+  CameraExtrinsicsManager()
+    : hCam = 1.20,
+      pitch = 15;
+
+  double get pitchRad => pitch * math.pi / 180.0;
+
 }

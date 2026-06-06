@@ -1,10 +1,10 @@
 import 'dart:math' as math;
-
 import 'package:baseer/features/distance_estimation/application/method1/camera_intrinsics_manager.dart';
 import 'package:baseer/features/distance_estimation/application/method2/camera_extrinsics_manager.dart';
 import 'package:baseer/features/distance_estimation/application/method2/foot_point_selector.dart';
 
 class GroundIntersectionResult {
+
   final double? distanceGround;
   final double? distance3d;
   final double? rayYWorld;
@@ -20,9 +20,11 @@ class GroundIntersectionResult {
     required this.rayZWorld,
     this.error,
   });
+
 }
 
 class RayGroundIntersectionEngine {
+
   const RayGroundIntersectionEngine();
 
   GroundIntersectionResult intersect({
@@ -34,17 +36,13 @@ class RayGroundIntersectionEngine {
     final cy = intrinsics.height / 2.0;
     final fPx = intrinsics.fPx;
     final fPy = intrinsics.fPy;
-
     final rxCam = (footPoint.u - cx) / fPx;
     final ryCam = (cy - footPoint.v) / fPy;
     final rzCam = 1.0;
-
     final pitch = extrinsics.pitchRad;
-
     final rxWorld = rxCam;
     final ryWorld = ryCam * math.cos(pitch) - rzCam * math.sin(pitch);
     final rzWorld = ryCam * math.sin(pitch) + rzCam * math.cos(pitch);
-
     if (ryWorld >= -1e-6) {
       return const GroundIntersectionResult(
         distanceGround: null,
@@ -55,16 +53,11 @@ class RayGroundIntersectionEngine {
         error: 'ray_no_ground_intersection',
       );
     }
-
-    final t = -extrinsics.heightMeters / ryWorld;
+    final t = -extrinsics.hCam / ryWorld;
     final xWorld = t * rxWorld;
     final zWorld = t * rzWorld;
     final distanceGround = math.sqrt(xWorld * xWorld + zWorld * zWorld);
-    final distance3d = math.sqrt(
-      distanceGround * distanceGround +
-          extrinsics.heightMeters * extrinsics.heightMeters,
-    );
-
+    final distance3d = math.sqrt(distanceGround * distanceGround + extrinsics.hCam * extrinsics.hCam,);
     return GroundIntersectionResult(
       distanceGround: distanceGround,
       distance3d: distance3d,
@@ -73,4 +66,5 @@ class RayGroundIntersectionEngine {
       rayZWorld: rzWorld,
     );
   }
+
 }
