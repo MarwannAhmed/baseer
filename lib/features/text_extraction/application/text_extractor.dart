@@ -87,28 +87,25 @@ class TextExtractor {
       
       final text = _recognize(crop);
       if (text.isNotEmpty) {
-        print('OCR: Box $i recognized: "$text"');
         results.add(_OcrResult(box, text));
-      } else {
-        print('OCR: Box $i recognized: (empty)');
       }
     }
 
     final assembled = _assembleLines(results);
-    print('OCR: Final text: "$assembled"');
+    print('OCR text: "$assembled"');
     return assembled;
   }
 
   static List<_Box> _detect(img.Image image) {
-    final origH   = image.height;
-    final origW   = image.width;
-    final scale   = _detMaxSide / math.max(origH, origW);
-    final tgtH    = ((origH * scale) / 32).round() * 32;
-    final tgtW    = ((origW * scale) / 32).round() * 32;
-    final resized = img.copyResize(image, width: tgtW, height: tgtH);
-    final input   = _detPreprocess(resized, tgtH, tgtW);
+    final originalHeight   = image.height;
+    final originalWidth   = image.width;
+    final scale   = _detMaxSide / math.max(originalHeight, originalWidth);
+    final newHeight    = ((originalHeight * scale) / 32).round() * 32;
+    final newWidth    = ((originalWidth * scale) / 32).round() * 32;
+    final resized = img.copyResize(image, width: newWidth, height: newHeight);
+    final input   = _detPreprocess(resized, newHeight, newWidth);
 
-    final tensor  = OrtValueTensor.createTensorWithDataList(input, [1, 3, tgtH, tgtW]);
+    final tensor  = OrtValueTensor.createTensorWithDataList(input, [1, 3, newHeight, newWidth]);
     final opts    = OrtRunOptions();
     final outputs = _detSession!.run(opts, {_detSession!.inputNames.first: tensor});
     tensor.release();
@@ -117,34 +114,34 @@ class TextExtractor {
     final raw = outputs.first?.value;
     if (raw == null) return [];
 
-    return _dbPostprocess(_flatten(raw), tgtH, tgtW, origH, origW);
+    return _dbPostprocess(_flatten(raw), newHeight, newWidth, originalHeight, originalWidth);
   }
 
   static Float32List _detPreprocess(img.Image image, int h, int w) {
-    final t = Float32List(3 * h * w);
+    final imageTensor = Float32List(3 * h * w);
     for (var y = 0; y < h; y++) {
       for (var x = 0; x < w; x++) {
         final p   = image.getPixel(x, y);
         final idx = y * w + x;
-        t[0 * h * w + idx] = (p.r / 255.0 - _detMean[0]) / _detStd[0];
-        t[1 * h * w + idx] = (p.g / 255.0 - _detMean[1]) / _detStd[1];
-        t[2 * h * w + idx] = (p.b / 255.0 - _detMean[2]) / _detStd[2];
+        imageTensor[0 * h * w + idx] = (p.r / 255.0 - _detMean[0]) / _detStd[0];
+        imageTensor[1 * h * w + idx] = (p.g / 255.0 - _detMean[1]) / _detStd[1];
+        imageTensor[2 * h * w + idx] = (p.b / 255.0 - _detMean[2]) / _detStd[2];
       }
     }
-    return t;
+    return imageTensor;
   }
 
   static List<_Box> _dbPostprocess(
-      List<double> prob, int mapH, int mapW, int origH, int origW) {
-    final mask = List<bool>.filled(mapH * mapW, false);
+      List<double> prob, int mapHeight, int mapWidth, int origHeight, int origWidth) {
+    final mask = List<bool>.filled(mapHeight * mapWidth, false);
     for (var i = 0; i < prob.length; i++) {
-      if (i < mapH * mapW) mask[i] = prob[i] > _dbThresh;
+      if (i < mapHeight * mapWidth) mask[i] = prob[i] > _dbThresh;
     }
 
-    final labels    = List<int>.filled(mapH * mapW, -1);
+    final labels    = List<int>.filled(mapHeight * mapWidth, -1);
     var   numLabels = 0;
 
-    for (var i = 0; i < mapH * mapW; i++) {
+    for (var i = 0; i < mapHeight * mapWidth; i++) {
       if (!mask[i] || labels[i] != -1) continue;
 
       final queue = <int>[i];
@@ -153,16 +150,16 @@ class TextExtractor {
 
       while (head < queue.length) {
         final curr = queue[head++];
-        final cy   = curr ~/ mapW;
-        final cx   = curr % mapW;
+        final cy   = curr ~/ mapWidth;
+        final cx   = curr % mapWidth;
 
         for (var dy = -1; dy <= 1; dy++) {
           for (var dx = -1; dx <= 1; dx++) {
             if (dy == 0 && dx == 0) continue;
             final ny = cy + dy;
             final nx = cx + dx;
-            if (ny < 0 || ny >= mapH || nx < 0 || nx >= mapW) continue;
-            final ni = ny * mapW + nx;
+            if (ny < 0 || ny >= mapHeight || nx < 0 || nx >= mapWidth) continue;
+            final ni = ny * mapWidth + nx;
             if (!mask[ni] || labels[ni] != -1) continue;
             labels[ni] = numLabels;
             queue.add(ni);
@@ -172,19 +169,19 @@ class TextExtractor {
       numLabels++;
     }
 
-    final scaleX = origW / mapW;
-    final scaleY = origH / mapH;
+    final scaleX = origWidth / mapWidth;
+    final scaleY = origHeight / mapHeight;
     final boxes  = <_Box>[];
 
     for (var label = 0; label < numLabels; label++) {
-      var minX = mapW, minY = mapH, maxX = 0, maxY = 0;
+      var minX = mapWidth, minY = mapHeight, maxX = 0, maxY = 0;
       var sumP = 0.0;
       var cnt  = 0;
 
-      for (var i = 0; i < mapH * mapW; i++) {
+      for (var i = 0; i < mapHeight * mapWidth; i++) {
         if (labels[i] != label) continue;
-        final py = i ~/ mapW;
-        final px = i % mapW;
+        final py = i ~/ mapWidth;
+        final px = i % mapWidth;
         if (px < minX) minX = px;
         if (px > maxX) maxX = px;
         if (py < minY) minY = py;
@@ -199,10 +196,10 @@ class TextExtractor {
       final bh     = (maxY - minY).toDouble();
       final expand = (bw + bh) * (_unclipRatio - 1) / 2;
 
-      final x1 = ((minX - expand) * scaleX).clamp(0.0, origW.toDouble());
-      final y1 = ((minY - expand) * scaleY).clamp(0.0, origH.toDouble());
-      final x2 = ((maxX + expand) * scaleX).clamp(0.0, origW.toDouble());
-      final y2 = ((maxY + expand) * scaleY).clamp(0.0, origH.toDouble());
+      final x1 = ((minX - expand) * scaleX).clamp(0.0, origWidth.toDouble());
+      final y1 = ((minY - expand) * scaleY).clamp(0.0, origHeight.toDouble());
+      final x2 = ((maxX + expand) * scaleX).clamp(0.0, origWidth.toDouble());
+      final y2 = ((maxY + expand) * scaleY).clamp(0.0, origHeight.toDouble());
 
       if (x2 - x1 >= 5 && y2 - y1 >= 5) boxes.add(_Box(x1, y1, x2, y2));
     }
@@ -233,7 +230,7 @@ class TextExtractor {
     final totalClasses = dictSize;
     final T = logits.length ~/ totalClasses;
     final buf = StringBuffer();
-    var prevIdx = -1;
+    var previousIdx = -1;
 
     for (var t = 0; t < T; t++) {
       var maxIdx = 0;
@@ -248,12 +245,12 @@ class TextExtractor {
       
       final isBlank = maxIdx == 0;
       
-      if (!isBlank && maxIdx != prevIdx) {
+      if (!isBlank && maxIdx != previousIdx) {
         final char = _dict[maxIdx];
         buf.write(char);
       }
       
-      prevIdx = maxIdx;
+      previousIdx = maxIdx;
     }
 
     final result = buf.toString();
@@ -261,17 +258,17 @@ class TextExtractor {
   }
 
   static Float32List _recPreprocess(img.Image image, int h, int w) {
-    final t = Float32List(3 * h * w);
+    final imageTensor = Float32List(3 * h * w);
     for (var y = 0; y < h; y++) {
       for (var x = 0; x < w; x++) {
         final p   = image.getPixel(x, y);
         final idx = y * w + x;
-        t[0 * h * w + idx] = (p.r / 255.0 - 0.5) / 0.5;
-        t[1 * h * w + idx] = (p.g / 255.0 - 0.5) / 0.5;
-        t[2 * h * w + idx] = (p.b / 255.0 - 0.5) / 0.5;
+        imageTensor[0 * h * w + idx] = (p.r / 255.0 - 0.5) / 0.5;
+        imageTensor[1 * h * w + idx] = (p.g / 255.0 - 0.5) / 0.5;
+        imageTensor[2 * h * w + idx] = (p.b / 255.0 - 0.5) / 0.5;
       }
     }
-    return t;
+    return imageTensor;
   }
 
   static String _assembleLines(List<_OcrResult> results) {

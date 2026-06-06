@@ -61,20 +61,21 @@ flutter pub get
 Create a `.env` file in the project root:
 
 ```env
-# URL of the FastAPI backend
-# Android emulator → http://10.0.2.2:8000
-# Real device      → http://<your-machine-LAN-ip>:8000
-# Desktop          → http://127.0.0.1:8000
-BASE_URI=http://127.0.0.1:8000
+BASE_URI=https://baseer-backend-crf6g8gscthna7d5.uaenorth-01.azurewebsites.net
 
 # Inference source for object detection (كشف mode)
-# ondevice → on-device YOLOv8 ONNX model
-# backend  → POST /analyze with command "كشف"
+# ondevice → on-device ONNX model
+# remote  → POST /analyze with command "كشف"
 DETECTION_SOURCE=ondevice
+
+# On-device model path for object detection 
+# assets/ml/yolov8_int8.onnx → on-device optimised YOLOv8n ONNX model
+# assets/ml/hybrid_yolov8n_mobilenet.onnx → on-device hybrid YOLOv8n & MobileNetV2 ONNX model
+DETECTION_SOURCE=assets/ml/yolov8n_int8.onnx
 
 # Inference source for text extraction (نص mode)
 # ondevice → on-device OCR ONNX model
-# backend  → POST /analyze with command "نص"
+# remote  → POST /analyze with command "نص"
 TEXT_SOURCE=ondevice
 
 # 'svm' → SVM-based color detection  |  'rulebased' → rule-based (default)

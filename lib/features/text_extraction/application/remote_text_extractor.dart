@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:image/image.dart' as img;
 
@@ -23,18 +22,13 @@ class RemoteTextExtractor implements TextExtractorInterface {
         http.MultipartFile.fromBytes('file', jpegBytes, filename: 'image.jpg'),
       );
 
-    debugPrint('🟡 RemoteTextExtractor: sending to $baseUrl/analyze');
-
     final streamed = await request.send().timeout(const Duration(seconds: 30));
     final body = await streamed.stream.bytesToString();
-
-    debugPrint('🟡 RemoteTextExtractor: status ${streamed.statusCode}: $body');
 
     if (streamed.statusCode != 200) return '';
 
     final json = jsonDecode(body) as Map<String, dynamic>;
     if (json.containsKey('error')) {
-      debugPrint('🔴 RemoteTextExtractor: ${json['error']}');
       return '';
     }
     return json['description'] as String? ?? '';
