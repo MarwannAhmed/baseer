@@ -19,6 +19,7 @@ import 'package:baseer/features/object_detection/application/object_detection_se
 import 'package:baseer/features/object_detection/application/detection_formatter.dart';
 import 'package:baseer/features/object_detection/domain/coco_labels.dart';
 import 'package:baseer/core/command_router.dart';
+import 'package:baseer/core/llm_router.dart';
 import 'package:baseer/features/text_extraction/application/text_extraction_service.dart';
 
 img.Image? _decodeImageBytes(Uint8List bytes) => img.decodeImage(bytes);
@@ -45,7 +46,7 @@ class _LiveCameraPageState extends State<LiveCameraPage>
   // ── Backend ──
   static const String _analyzeEndpoint = '/analyze';
   String get _baseUri =>
-      dotenv.env['BASE_URI']?.trim() ?? 'https://baseer-backend-crf6g8gscthna7d5.uaenorth-01.azurewebsites.net';
+      dotenv.env['BASE_URI']?.trim() ?? 'https://khalidali44-baseer-backend.hf.space';
 
   // ── Camera / speech ──
   CameraController? _controller;
@@ -66,7 +67,7 @@ class _LiveCameraPageState extends State<LiveCameraPage>
 
   // Controlled by TEXT_SOURCE in .env: 'remote' | 'remote_ocr' | 'remote_ocr_ar' | 'ondevice'
   final TextExtractionService _textExtractor = () {
-    final baseUrl = dotenv.env['BASE_URI'] ?? 'https://baseer-backend-crf6g8gscthna7d5.uaenorth-01.azurewebsites.net';
+    final baseUrl = dotenv.env['BASE_URI'] ?? 'https://khalidali44-baseer-backend.hf.space';
     return switch (dotenv.env['TEXT_SOURCE']?.toLowerCase()) {
       'remote'        => TextExtractionService.remote(baseUrl: baseUrl),
       'remote_ocr'    => TextExtractionService.remoteOcr(baseUrl: baseUrl),
@@ -79,7 +80,7 @@ class _LiveCameraPageState extends State<LiveCameraPage>
   final ObjectDetectionService _objectDetector =
       (dotenv.env['DETECTION_SOURCE']?.toLowerCase() == 'remote')
       ? ObjectDetectionService.remote(
-          baseUrl: dotenv.env['BASE_URI'] ?? 'https://baseer-backend-crf6g8gscthna7d5.uaenorth-01.azurewebsites.net',
+          baseUrl: dotenv.env['BASE_URI'] ?? 'https://khalidali44-baseer-backend.hf.space',
         )
       : ObjectDetectionService.onDevice(
           classNames: cocoClassNames,
@@ -98,6 +99,7 @@ class _LiveCameraPageState extends State<LiveCameraPage>
   // ── State ──
   bool _isListening = false;
   bool _isProcessing = false;
+  bool _shouldTalk = false;
   String _lastCommand = 'كشف';
   String _sttLocale = 'ar_EG';
   String _lastResult = '';
@@ -192,18 +194,18 @@ class _LiveCameraPageState extends State<LiveCameraPage>
 
     if (!mounted) return;
     await TtsNarrator.instance.speak('بصير جاهز.');
-    await Future.delayed(const Duration(milliseconds: 700));
+    await Future.delayed(const Duration(milliseconds: 400));
     if (!mounted) return;
     await TtsNarrator.instance.speak(
       'انقر مرتين في أي مكان على الشاشة للتحدث.',
     );
-    await Future.delayed(const Duration(milliseconds: 700));
+    await Future.delayed(const Duration(milliseconds: 400));
     if (!mounted) return;
     await TtsNarrator.instance.speak('اضغط بشكل مطوّل للتقاط صورة وتحليلها.');
-    await Future.delayed(const Duration(milliseconds: 700));
+    await Future.delayed(const Duration(milliseconds: 400));
     if (!mounted) return;
     await TtsNarrator.instance.speak('امسح لليسار أو لليمين لتغيير الوضع.');
-    await Future.delayed(const Duration(milliseconds: 700));
+    await Future.delayed(const Duration(milliseconds: 400));
     if (!mounted) return;
     await TtsNarrator.instance.speak('الوضع الحالي: كشف.');
   }
@@ -215,6 +217,7 @@ class _LiveCameraPageState extends State<LiveCameraPage>
     setState(() {
       _activeMode = mode;
       _lastCommand = mode.defaultCommand;
+      _shouldTalk = false;
       _modeOverlayVisible = true;
       _modeOverlayLabel = mode.label;
     });
@@ -248,17 +251,21 @@ class _LiveCameraPageState extends State<LiveCameraPage>
         setState(() => _isListening = false);
         await _speech.stop();
         if (result.recognizedWords.isNotEmpty) {
-          _lastCommand = result.recognizedWords;
           await TtsNarrator.instance.speak('قلت: ${result.recognizedWords}');
 
-          final command = CommandRouter.route(result.recognizedWords);
+          final command = await LlmRouter.instance.classifyIntent(result.recognizedWords);
+          debugPrint('🟡 Classified command: $command');
           if (command == AppCommand.detectObject) {
             await _switchMode(_AppMode.detect);
           } else if (command == AppCommand.detectColor) {
             await _switchMode(_AppMode.color);
           } else if (command == AppCommand.readText) {
             await _switchMode(_AppMode.text);
+          } 
+          else if (command == AppCommand.talk) {
+            _shouldTalk = true;
           }
+          _lastCommand = result.recognizedWords;
         } else {
           await TtsNarrator.instance.speak('لم أسمع شيئاً. حاول مجدداً.');
         }
@@ -275,14 +282,20 @@ class _LiveCameraPageState extends State<LiveCameraPage>
 
   // AFTER
   Future<void> _onCapture() async {
-    if (_activeMode == _AppMode.color) {
-      await _captureAndDetectColor();
-    } else if (_activeMode == _AppMode.detect) {
-      await _captureAndDetectObjects();
-    } else if (_activeMode == _AppMode.text) {
-      await _captureAndExtractText();
+    if (_shouldTalk){
+      final narration = await LlmRouter.instance.generateResponse(
+        originalCommand: _lastCommand,
+        functionOutput: "No function was run, respond naturally to the user's command",
+      );
+      await TtsNarrator.instance.speak(narration);
     } else {
-      await _captureAndSend();
+      if (_activeMode == _AppMode.color) {
+        await _captureAndDetectColor();
+      } else if (_activeMode == _AppMode.detect) {
+        await _captureAndDetectObjects();
+      } else if (_activeMode == _AppMode.text) {
+        await _captureAndExtractText();
+      }
     }
   }
 
@@ -312,7 +325,11 @@ class _LiveCameraPageState extends State<LiveCameraPage>
 
       setState(() => _lastResult = result.colorAr);
       _resultFadeController.forward();
-      await TtsNarrator.instance.speak('اللون ${result.colorAr}');
+      final narration = await LlmRouter.instance.generateResponse(
+        originalCommand: _lastCommand,
+        functionOutput: result.colorAr,
+      );
+      await TtsNarrator.instance.speak(narration);
     } catch (_) {
       await TtsNarrator.instance.speak('خطأ في كشف اللون');
     } finally {
@@ -368,7 +385,11 @@ class _LiveCameraPageState extends State<LiveCameraPage>
       );
       setState(() => _lastResult = sentence);
       _resultFadeController.forward();
-      await TtsNarrator.instance.speak(sentence);
+      final narration = await LlmRouter.instance.generateResponse(
+        originalCommand: _lastCommand,
+        functionOutput: sentence,
+      );
+      await TtsNarrator.instance.speak(narration);
     } catch (e, stack) {
       debugPrint('Detection error: $e');
       debugPrint('Stack: $stack');
@@ -406,7 +427,11 @@ class _LiveCameraPageState extends State<LiveCameraPage>
       } else {
         setState(() => _lastResult = text);
         _resultFadeController.forward();
-        await TtsNarrator.instance.speak(text);
+        final narration = await LlmRouter.instance.generateResponse(
+          originalCommand: _lastCommand,
+          functionOutput: text,
+        );
+        await TtsNarrator.instance.speak(narration);
       }
     } catch (e) {
       debugPrint('OCR error: $e');

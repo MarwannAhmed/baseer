@@ -3,7 +3,7 @@
 // Maps a free-form spoken command (any language) to one of the four
 // app features.  Add keywords here as the vocabulary grows.
 
-enum AppCommand { describe, readText, detectColor, detectObject }
+enum AppCommand { talk, readText, detectColor, detectObject }
 
 class CommandRouter {
   const CommandRouter._();
@@ -13,7 +13,7 @@ class CommandRouter {
     if (_colorWords.any((w) => t.contains(w))) return AppCommand.detectColor;
     if (_textWords.any((w) => t.contains(w))) return AppCommand.readText;
     if (_objectWords.any((w) => t.contains(w))) return AppCommand.detectObject;
-    return AppCommand.describe;
+    return AppCommand.detectObject;
   }
 
   // ── Color ─────────────────────────────────────────────────────────────────
