@@ -1,8 +1,6 @@
 import 'package:image/image.dart' as img;
 import 'package:baseer/features/analysis/domain/detected_object.dart';
 import 'package:baseer/features/color_recognition/application/color_detector.dart';
-import 'package:baseer/features/color_recognition/application/color_detector_svm.dart';
-import 'package:baseer/features/color_recognition/application/remote_color_detector.dart';
 
 enum ColorDetectorMode {
   ruleBased, // original rule-based
@@ -13,35 +11,15 @@ enum ColorDetectorMode {
 class ColorDetectorFactory {
   final ColorDetectorMode mode;
   final ColorDetector    _ruleBased = ColorDetector();
-  final ColorDetectorSvm _svm       = ColorDetectorSvm();
-  RemoteColorDetector?   _remote;
 
-  UnifiedColorResult? _cachedRemoteResult;
-
-  ColorDetectorFactory({this.mode = ColorDetectorMode.ruleBased, String? baseUrl}) {
-    if (mode == ColorDetectorMode.backend) {
-      _remote = RemoteColorDetector(baseUrl: baseUrl ?? 'http://127.0.0.1:8000');
-    }
-  }
+  ColorDetectorFactory({this.mode = ColorDetectorMode.ruleBased, String? baseUrl});
 
   Future<void> setFrame(img.Image frame) async {
-    switch (mode) {
-      case ColorDetectorMode.ruleBased:
-        return _ruleBased.setFrame(frame);
-      case ColorDetectorMode.svm:
-        return _svm.setFrame(frame);
-      case ColorDetectorMode.backend:
-        _cachedRemoteResult = await _remote!.detect(frame);
-    }
+    return _ruleBased.setFrame(frame);
   }
 
   UnifiedColorResult detect(int x1, int y1, int x2, int y2) {
-    return switch (mode) {
-      ColorDetectorMode.ruleBased => _ruleBased.detect(x1, y1, x2, y2).toUnified(),
-      ColorDetectorMode.svm => _svm.detect(x1, y1, x2, y2).toUnified(),
-      ColorDetectorMode.backend => _cachedRemoteResult ??
-          const UnifiedColorResult(colorEn: 'unknown', colorAr: 'غير معروف'),
-    };
+    return _ruleBased.detect(x1, y1, x2, y2).toUnified();
   }
 
   Future<List<DetectedObject>> detectColorsForObjects(
@@ -81,11 +59,6 @@ class UnifiedColorResult {
 }
 
 extension ColorResultX on ColorResult {
-  UnifiedColorResult toUnified() =>
-      UnifiedColorResult(colorEn: colorEn, colorAr: colorAr);
-}
-
-extension SvmColorResultX on SvmColorResult {
   UnifiedColorResult toUnified() =>
       UnifiedColorResult(colorEn: colorEn, colorAr: colorAr);
 }

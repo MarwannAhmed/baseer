@@ -40,11 +40,8 @@ dependencies:
   permission_handler: ^11.3.1
   onnxruntime: ^1.4.1
   path_provider: ^2.1.0
-  tflite_flutter: ^0.11.0
 
 dev_dependencies:
-  flutter_test:
-    sdk: flutter
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
@@ -72,10 +69,6 @@ flutter:
     - .env
     - assets/imgs/
     - assets/ml/
-    - assets/ml/midas.tflite
-    - assets/models/det.onnx
-    - assets/models/rec.onnx
-    - assets/dict/ppocr_keys.txt
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

@@ -6,7 +6,6 @@ import 'package:baseer/features/analysis/domain/detected_object.dart';
 import '../domain/detection_result.dart';
 import '../domain/object_detector.dart';
 import 'on_device_object_detector.dart';
-import 'remote_object_detector.dart';
 
 class ObjectDetectionService {
   final ObjectDetector _detector;
@@ -33,10 +32,6 @@ class ObjectDetectionService {
         iouThreshold: iouThreshold,
       ),
     );
-  }
-
-  factory ObjectDetectionService.remote({required String baseUrl}) {
-    return ObjectDetectionService._(RemoteObjectDetector(baseUrl: baseUrl));
   }
 
   Future<void> init() => _detector.init();

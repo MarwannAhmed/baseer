@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
@@ -7,7 +6,6 @@ import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter/services.dart';
-import 'package:http/http.dart' as http;
 import 'package:image/image.dart' as img;
 import 'package:speech_to_text/speech_to_text.dart';
 
@@ -43,10 +41,7 @@ class LiveCameraPage extends StatefulWidget {
 
 class _LiveCameraPageState extends State<LiveCameraPage>
     with TickerProviderStateMixin {
-  // ── Backend ──
-  static const String _analyzeEndpoint = '/analyze';
-  String get _baseUri =>
-      dotenv.env['BASE_URI']?.trim() ?? 'https://khalidali44-baseer-backend.hf.space';
+
 
   // ── Camera / speech ──
   CameraController? _controller;
@@ -54,13 +49,8 @@ class _LiveCameraPageState extends State<LiveCameraPage>
   final SpeechToText _speech = SpeechToText();
   // Controlled by COLOR_SOURCE in .env: 'backend' | 'svm' | 'rulebased'
   final ColorDetectorFactory _colorDetector = (() {
-    final src = dotenv.env['COLOR_SOURCE']?.toLowerCase() ?? 'rulebased';
     return ColorDetectorFactory(
-      mode: switch (src) {
-        'svm'     => ColorDetectorMode.svm,
-        'backend' => ColorDetectorMode.backend,
-        _         => ColorDetectorMode.ruleBased,
-      },
+      mode: ColorDetectorMode.ruleBased,
       baseUrl: dotenv.env['BASE_URI'],
     );
   })();
@@ -68,25 +58,15 @@ class _LiveCameraPageState extends State<LiveCameraPage>
   // Controlled by TEXT_SOURCE in .env: 'remote' | 'remote_ocr' | 'remote_ocr_ar' | 'ondevice'
   final TextExtractionService _textExtractor = () {
     final baseUrl = dotenv.env['BASE_URI'] ?? 'https://khalidali44-baseer-backend.hf.space';
-    return switch (dotenv.env['TEXT_SOURCE']?.toLowerCase()) {
-      'remote'        => TextExtractionService.remote(baseUrl: baseUrl),
-      'remote_ocr'    => TextExtractionService.remoteOcr(baseUrl: baseUrl),
-      'remote_ocr_ar' => TextExtractionService.remoteOcrAr(baseUrl: baseUrl),
-      _               => TextExtractionService.onDevice(),
-    };
+    return TextExtractionService.remote(baseUrl: baseUrl);
   }();
 
   // Controlled by DETECTION_SOURCE in .env: 'remote' | 'ondevice'
   final ObjectDetectionService _objectDetector =
-      (dotenv.env['DETECTION_SOURCE']?.toLowerCase() == 'remote')
-      ? ObjectDetectionService.remote(
-          baseUrl: dotenv.env['BASE_URI'] ?? 'https://khalidali44-baseer-backend.hf.space',
-        )
-      : ObjectDetectionService.onDevice(
-          classNames: cocoClassNames,
-          modelAssetPath:
-              dotenv.env['DETECTION_MODEL'] ?? 'assets/ml/yolov8n_int8.onnx',
-        );
+      ObjectDetectionService.onDevice(
+        classNames: cocoClassNames,
+        modelAssetPath: 'assets/ml/yolov8n_int8.onnx',
+      );
 
   final DistanceEstimationService _distanceEstimator = DistanceEstimationService();
   // ── Silent input / mode overlay ──
@@ -442,49 +422,7 @@ class _LiveCameraPageState extends State<LiveCameraPage>
   }
 
   // ─── Capture ─────────────────────────────────────────────────────────────
-  Future<void> _captureAndSend() async {
-    if (_isProcessing) return;
-    setState(() {
-      _isProcessing = true;
-      _showSilentInput = false;
-    });
-    _resultFadeController.reverse();
 
-    HapticFeedback.heavyImpact();
-    await TtsNarrator.instance.speak('جاري التحليل');
-
-    final XFile file = await _controller!.takePicture();
-    await _sendImageToBackend(file.path, _lastCommand);
-
-    setState(() => _isProcessing = false);
-  }
-
-  Future<void> _sendImageToBackend(String imagePath, String command) async {
-    try {
-      final uri = Uri.parse('$_baseUri$_analyzeEndpoint');
-      final request = http.MultipartRequest('POST', uri)
-        ..fields['command'] = command
-        ..files.add(await http.MultipartFile.fromPath('file', imagePath));
-
-      final response = await request.send().timeout(
-        const Duration(seconds: 30),
-      );
-
-      if (response.statusCode == 200) {
-        final body = await response.stream.bytesToString();
-        final json = jsonDecode(body);
-        final description = json['description'] as String;
-
-        setState(() => _lastResult = description);
-        _resultFadeController.forward();
-        await TtsNarrator.instance.speak(description);
-      } else {
-        await TtsNarrator.instance.speak('فشل التحليل');
-      }
-    } catch (_) {
-      await TtsNarrator.instance.speak('خطأ في الاتصال');
-    }
-  }
 
   // ─── Silent input submit ──────────────────────────────────────────────────
   Future<void> _submitSilentInput() async {
